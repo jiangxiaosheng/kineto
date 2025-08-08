@@ -223,6 +223,21 @@ int CuptiActivityApi::processActivitiesForBuffer(
   }
   return count;
 }
+
+int CuptiActivityApi::processActivitiesForBufferStatic(
+    uint8_t* buf,
+    size_t validSize,
+    const std::function<void(const CUpti_Activity*)>& handler) {
+  int count = 0;
+  if (buf && validSize) {
+    CUpti_Activity* record{nullptr};
+    while ((nextActivityRecord(buf, validSize, record))) {
+      handler(record);
+      ++count;
+    }
+  }
+  return count;
+}
 #endif
 
 const std::pair<int, size_t> CuptiActivityApi::processActivities(
@@ -238,6 +253,20 @@ const std::pair<int, size_t> CuptiActivityApi::processActivities(
   }
 #endif
   return res;
+}
+
+const std::pair<int, size_t> CuptiActivityApi::processActivitiesStatic(
+    CuptiActivityBufferMap& buffers,
+  const std::function<void(const CUpti_Activity*)>& handler) {
+  std::pair<int, size_t> res{0, 0};
+#ifdef HAS_CUPTI
+    for (auto& pair : buffers) {
+      auto& buf = pair.second;
+      res.first += processActivitiesForBufferStatic(buf->data(), buf->size(), handler);
+      res.second += buf->size();
+    }
+#endif
+    return res;
 }
 
 void CuptiActivityApi::clearActivities() {

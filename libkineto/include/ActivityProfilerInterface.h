@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <set>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -61,6 +62,8 @@ class ActivityProfilerInterface {
   // prepareTrace was called.
   virtual void startTrace() {}
 
+  virtual void flushTrace(const std::string& path) {}
+
   // Stop and process trace, producing an in-memory list of trace records.
   // The processing will be done synchronously (using the calling thread.)
   virtual std::unique_ptr<ActivityTraceInterface> stopTrace() {
@@ -70,6 +73,10 @@ class ActivityProfilerInterface {
   // Re-evaluate internal state to allow for triggering operations based
   // on number of iteration. each implicitly increments the iteration count
   virtual void step() {}
+
+  // Besides notifying a step is done, flush the trace to a json file.
+  // This will not stop the trace engine, also not blocking the calling thread.
+  virtual void step(const std::string& path) {}
 
   // *** TraceActivity API ***
   // FIXME: Pass activityProfiler interface into clientInterface?

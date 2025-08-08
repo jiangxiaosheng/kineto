@@ -220,4 +220,14 @@ void suppressLibkinetoLogMessages() {
   }
 }
 
+static bool orcaMode = false;
+
+void setOrcaMode(bool flag) {
+  orcaMode = flag;
+}
+
+bool isOrcaMode() {
+  return orcaMode;
+}
+
 } // extern C

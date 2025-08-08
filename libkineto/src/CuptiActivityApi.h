@@ -68,6 +68,13 @@ class CuptiActivityApi {
       CuptiActivityBufferMap&,
       const std::function<void(const CUpti_Activity*)>& handler);
 
+  // This function doesn't need to be a member of CuptiActivityApi so make it static here
+  // for cleanliness, so that we don't need the cupti instance in processTraceInternalOnSnapshot()
+  // to prevent any mess
+  static const std::pair<int, size_t> processActivitiesStatic(
+      CuptiActivityBufferMap&,
+      const std::function<void(const CUpti_Activity*)>& handler);
+
   void setMaxBufferSize(int size);
   void setDeviceBufferSize(size_t size);
   void setDeviceBufferPoolLimit(size_t limit);
@@ -103,6 +110,11 @@ class CuptiActivityApi {
       uint8_t* buffer,
       size_t /* unused */,
       size_t validSize);
+
+  static int processActivitiesForBufferStatic(
+      uint8_t* buf,
+      size_t validSize,
+      const std::function<void(const CUpti_Activity*)>& handler);  
 #endif // HAS_CUPTI
 
  protected:

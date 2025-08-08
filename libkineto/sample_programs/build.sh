@@ -9,14 +9,22 @@ g++ \
   -g3 \
   -O0 \
   kineto_playground.cpp \
+  time_converter.cc \
+  kplay_cu.o \
   -o main \
   -I/usr/local/cuda/include \
+  -I../src \
   -I../third_party/fmt/include \
-  -I/usr/local/include/kineto \
+  -I/pdlhome/install/kineto/include/kineto \
   -L/usr/local/lib \
   -L/usr/local/cuda/lib64 \
+  -L/usr/local/cuda/extras/CUPTI/lib64 \
+  -Wl,-rpath,/usr/local/cuda/lib64 \
+  -Wl,-rpath,/usr/local/cuda/extras/CUPTI/lib64 \
+  /pdlhome/install/kineto/lib/libkineto.a \
   -lpthread \
   -lcuda \
   -lcudart \
-  /usr/local/lib/libkineto.a \
-  kplay_cu.o
+  -lcupti \
+  -lnvperf_host \
+  -lnvperf_target

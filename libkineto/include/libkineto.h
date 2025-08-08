@@ -38,6 +38,8 @@ void suppressLibkinetoLogMessages();
 int InitializeInjection(void);
 void libkineto_init(bool cpuOnly, bool logOnError);
 bool hasTestEnvVar();
+void setOrcaMode(bool flag);
+bool isOrcaMode();
 }
 
 namespace libkineto {

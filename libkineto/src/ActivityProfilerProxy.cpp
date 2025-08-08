@@ -8,22 +8,19 @@
 
 #include "ActivityProfilerProxy.h"
 
-#include <chrono>
 #include "ActivityProfilerController.h"
 #include "Config.h"
 #include "Logger.h"
 #include "ThreadUtil.h"
+#include <chrono>
 
 namespace KINETO_NAMESPACE {
 
-ActivityProfilerProxy::ActivityProfilerProxy(
-    bool cpuOnly,
-    ConfigLoader& configLoader)
+ActivityProfilerProxy::ActivityProfilerProxy(bool cpuOnly,
+                                             ConfigLoader &configLoader)
     : cpuOnly_(cpuOnly), configLoader_(configLoader) {}
 
-ActivityProfilerProxy::~ActivityProfilerProxy() {
-  delete controller_;
-}
+ActivityProfilerProxy::~ActivityProfilerProxy() { delete controller_; }
 
 void ActivityProfilerProxy::init() {
   if (!controller_) {
@@ -31,20 +28,19 @@ void ActivityProfilerProxy::init() {
   }
 }
 
-void ActivityProfilerProxy::scheduleTrace(const std::string& configStr) {
+void ActivityProfilerProxy::scheduleTrace(const std::string &configStr) {
   resetTLS();
   Config config;
   config.parse(configStr);
   controller_->scheduleTrace(config);
 }
 
-void ActivityProfilerProxy::scheduleTrace(const Config& config) {
+void ActivityProfilerProxy::scheduleTrace(const Config &config) {
   controller_->scheduleTrace(config);
 }
 
 void ActivityProfilerProxy::prepareTrace(
-    const std::set<ActivityType>& activityTypes,
-    const std::string& configStr) {
+    const std::set<ActivityType> &activityTypes, const std::string &configStr) {
   Config config;
   bool validate_required = true;
 
@@ -76,21 +72,15 @@ void ActivityProfilerProxy::toggleCollectionDynamic(const bool enable) {
   controller_->toggleCollectionDynamic(enable);
 }
 
-void ActivityProfilerProxy::startTrace() {
-  controller_->startTrace();
-}
+void ActivityProfilerProxy::startTrace() { controller_->startTrace(); }
 
 std::unique_ptr<ActivityTraceInterface> ActivityProfilerProxy::stopTrace() {
   return controller_->stopTrace();
 }
 
-void ActivityProfilerProxy::step() {
-  controller_->step();
-}
+void ActivityProfilerProxy::step() { controller_->step(); }
 
-bool ActivityProfilerProxy::isActive() {
-  return controller_->isActive();
-}
+bool ActivityProfilerProxy::isActive() { return controller_->isActive(); }
 
 void ActivityProfilerProxy::pushCorrelationId(uint64_t id) {
   controller_->pushCorrelationId(id);
@@ -113,9 +103,8 @@ void ActivityProfilerProxy::transferCpuTrace(
   controller_->transferCpuTrace(std::move(traceBuffer));
 }
 
-void ActivityProfilerProxy::addMetadata(
-    const std::string& key,
-    const std::string& value) {
+void ActivityProfilerProxy::addMetadata(const std::string &key,
+                                        const std::string &value) {
   controller_->addMetadata(key, value);
 }
 
@@ -129,12 +118,10 @@ void ActivityProfilerProxy::addChildActivityProfiler(
 }
 
 void ActivityProfilerProxy::logInvariantViolation(
-    const std::string& profile_id,
-    const std::string& assertion,
-    const std::string& error,
-    const std::string& group_profile_id) {
-  controller_->logInvariantViolation(
-      profile_id, assertion, error, group_profile_id);
+    const std::string &profile_id, const std::string &assertion,
+    const std::string &error, const std::string &group_profile_id) {
+  controller_->logInvariantViolation(profile_id, assertion, error,
+                                     group_profile_id);
 }
 
 } // namespace KINETO_NAMESPACE
