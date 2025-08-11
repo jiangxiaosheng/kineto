@@ -1140,9 +1140,6 @@ void CuptiActivityProfiler::startTraceInternal(
     session->start();
   }
   currentRunloopState_ = RunloopState::CollectTrace;
-  if (isOrcaMode()) {
-    currentRunloopState_ = RunloopState::ContinuousFlush;
-  }
 }
 
 void CuptiActivityProfiler::stopTraceInternal(
@@ -1195,11 +1192,25 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
   VLOG_IF(1, currentIter >= 0)
       << "Run loop on application step(), iteration = " << currentIter;
 
-  if (isOrcaMode() && currentRunloopState_ == RunloopState::ContinuousFlush) {
+  if (isOrcaMode()) {
     if (currentIter < 0) {
       LOG(ERROR) << "Profiling must be iteration based in orca mode";
-    } else {
-      flushTrace(currentIter);
+      return new_wakeup_time;
+    }
+
+    if (currentRunloopState_ == RunloopState::Warmup) {
+      warmup_done = derivedConfig_->isWarmupDone(now, currentIter);
+#if defined(HAS_CUPTI) || defined(HAS_ROCTRACER)
+      if (!cuptiSanityCheck()) {
+        LOG(ERROR) << "Cupti sanity check failed, stopped early";
+        return new_wakeup_time;
+      }
+#endif // HAS_CUPTI || HAS_ROCTRACER
+      if (warmup_done) {
+        startTraceOrca();
+      }
+    } else if (currentRunloopState_ == RunloopState::CollectTrace) {
+      stopTraceOrca();
     }
     return new_wakeup_time;
   }
@@ -1342,6 +1353,52 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
 
   return new_wakeup_time;
 }
+
+void CuptiActivityProfiler::startTraceOrca() {
+  captureWindowStartTime_ = libkineto::timeSinceEpoch(system_clock::now());
+  VLOG(0) << "Warmup -> ContinuousFlush";
+  for (auto &session : sessions_) {
+    LOG(INFO) << "Starting child profiler session";
+    session->start();
+  }
+  currentRunloopState_ = RunloopState::ContinuousFlush;
+}
+
+void CuptiActivityProfiler::stopTraceOrca() {
+#ifdef HAS_CUPTI
+    cupti_.disableCuptiActivities(derivedConfig_->profileActivityTypes());
+#else
+    cupti_.disableActivities(derivedConfig_->profileActivityTypes());
+#endif
+
+  if (currentRunloopState_ == RunloopState::CollectTrace) {
+    VLOG(0) << "ContinuousFlush -> ProcessTrace";
+  } else {
+    LOG(WARNING) << "Called stopTrace with state == "
+                 << static_cast<std::underlying_type<RunloopState>::type>(
+                        currentRunloopState_.load());
+  }
+  for (auto &session : sessions_) {
+    LOG(INFO) << "Stopping child profiler session";
+    session->stop();
+  }
+  currentRunloopState_ = RunloopState::WaitForRequest;
+}
+
+#ifdef HAS_CUPTI
+bool CuptiActivityProfiler::cuptiSanityCheck() {
+  if (cupti_.stopCollection) {
+    // Go to process trace to clear any outstanding buffers etc
+    stopTraceOrca();
+    resetInternal();
+    LOG(ERROR) << "State: Warmup stopped by CUPTI. (Buffer size configured is "
+               << config_->activitiesMaxGpuBufferSize() / 1024 / 1024 << "MB)";
+    UST_LOGGER_MARK_COMPLETED(kWarmUpStage);
+    return false;
+  }
+  return true;
+}
+#endif // HAS_CUPTI
 
 void CuptiActivityProfiler::TraceSnapshot::processTrace(
     ActivityLogger &logger) {
@@ -1813,14 +1870,15 @@ void CuptiActivityProfiler::TraceSnapshot::finalizeTrace(
   //   }
   // }
 
-  for (const auto &iterations : traceSpans) {
-    for (const auto &span_pair : iterations.second) {
-      const TraceSpan &gpu_span = span_pair.second;
-      if (gpu_span.opCount > 0) {
-        logger.handleTraceSpan(gpu_span);
-      }
-    }
-  }
+  // TODO: trace spans are only generated if there is cpu tracing data
+  // for (const auto &iterations : traceSpans) {
+  //   for (const auto &span_pair : iterations.second) {
+  //     const TraceSpan &gpu_span = span_pair.second;
+  //     if (gpu_span.opCount > 0) {
+  //       logger.handleTraceSpan(gpu_span);
+  //     }
+  //   }
+  // }
 
 #ifdef HAS_CUPTI
   // Overhead info
@@ -1830,7 +1888,7 @@ void CuptiActivityProfiler::TraceSnapshot::finalizeTrace(
   }
 #endif // HAS_CUPTI
 
-  gpuUserEventMap_.logEvents(&logger);
+  gpuUserEventMap.logEvents(&logger);
 
   // for (auto &session : sessions_) {
   //   auto trace_buffer = session->getTraceBuffer();
@@ -1846,9 +1904,9 @@ void CuptiActivityProfiler::TraceSnapshot::finalizeTrace(
   // Logger Metadata contains a map of LOGs collected in Kineto
   //   logger_level -> List of log lines
   // This will be added into the trace as metadata.
-  std::unordered_map<std::string, std::vector<std::string>> loggerMD =
-      getLoggerMetadata();
-  logger.finalizeTrace(config, std::move(traceBuffers_), captureWindowEndTime_,
+  // TODO: logger data are not needed in orca traces
+  std::unordered_map<std::string, std::vector<std::string>> loggerMD;
+  logger.finalizeTrace(*config, std::move(traceBuffers), captureWindowEndTime,
                        loggerMD);
 }
 
@@ -1874,7 +1932,7 @@ CuptiActivityProfiler::makeTraceSnapshot() {
 
 #if defined(HAS_CUPTI) || defined(HAS_ROCTRACER)
   if (cupti_.stopCollection) {
-    ecs_.cupti_stopped_early = cupti_.stopCollection;
+    snapshot.ecs.cupti_stopped_early = cupti_.stopCollection;
     LOG(ERROR)
         << "State: CollectTrace stopped by CUPTI. (Buffer size configured is "
         << config_->activitiesMaxGpuBufferSize() / 1024 / 1024 << "MB)";
@@ -1882,20 +1940,17 @@ CuptiActivityProfiler::makeTraceSnapshot() {
   }
 #endif // HAS_CUPTI || HAS_ROCTRACER
 
-  std::lock_guard<std::recursive_mutex> guard(mutex_);
-  captureWindowEndTime_ = libkineto::timeSinceEpoch(now);
+  snapshot.captureWindowEndTime = libkineto::timeSinceEpoch(now);
 
-  traceBuffers_->gpu = cupti_.activityBuffers();
+  snapshot.traceBuffers->gpu = cupti_.activityBuffers();
   if (VLOG_IS_ON(1)) {
     addOverheadSample(snapshot.flushOverhead, cupti_.flushOverhead);
   }
 
   snapshot.cpuOnly = cpuOnly_;
   // traceBuffers_ will become nullptr after std::move
-  snapshot.traceBuffers = std::move(traceBuffers_);
   snapshot.resourceOverheadCount = resourceOverheadCount_;
   snapshot.captureWindowStartTime = captureWindowStartTime_;
-  snapshot.captureWindowEndTime = captureWindowEndTime_;
 
   return snapshot;
 }
@@ -1913,8 +1968,10 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
       [&logger, trace_snapshot = std::move(trace_snapshot)]() mutable {
         trace_snapshot.processTrace(*logger);
       });
-
-  VLOG(0) << "ProcessTrace -> WaitForRequest";
+  // TODO: block just for testing
+  auto &th = process_threads_.back();
+  th.join();
+  process_threads_.pop_back();
 }
 
 void CuptiActivityProfiler::finalizeTrace(const Config &config,

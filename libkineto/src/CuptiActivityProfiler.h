@@ -395,6 +395,7 @@ private:
     ActivityTraceMap clientActivityTraceMap;
     std::deque<DeferredLogEntry> logQueue;
     std::map<std::string, int> iterationCountMap;
+    std::vector<ActivityLogger::OverheadInfo> overheadInfo;
 
     // These two were origianally a static member in CuptiActivityProfiler.cpp
     std::unordered_map<uint32_t, uint32_t> ctxToDeviceId;
@@ -500,6 +501,10 @@ private:
   void stopTraceInternal(
       const std::chrono::time_point<std::chrono::system_clock> &now);
 
+  void startTraceOrca();
+
+  void stopTraceOrca();
+
   void processTraceInternal(ActivityLogger &logger);
 
   void resetInternal();
@@ -557,6 +562,9 @@ private:
   void handleGpuActivity(const ITraceActivity &act, ActivityLogger *logger);
 
 #ifdef HAS_CUPTI
+  // Check if cupti is running properly
+  bool cuptiSanityCheck();
+
   // Process generic CUPTI activity
   void handleCuptiActivity(const CUpti_Activity *record,
                            ActivityLogger *logger);
