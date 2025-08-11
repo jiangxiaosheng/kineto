@@ -1193,8 +1193,9 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
       << "Run loop on application step(), iteration = " << currentIter;
 
   if (isOrcaMode()) {
+    // If currentIter < 0, it's called from the long-running profiler thread
+    // not from step(), so just return here.
     if (currentIter < 0) {
-      LOG(ERROR) << "Profiling must be iteration based in orca mode";
       return new_wakeup_time;
     }
 
@@ -1207,10 +1208,19 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
       }
 #endif // HAS_CUPTI || HAS_ROCTRACER
       if (warmup_done) {
+        LOG(INFO) << "Warmup done, starting trace";
         startTraceOrca();
       }
-    } else if (currentRunloopState_ == RunloopState::CollectTrace) {
-      stopTraceOrca();
+    } else if (currentRunloopState_ == RunloopState::ContinuousFlush) {
+      LOG(INFO) << "Flush trace at iteration " << currentIter;
+      flushTrace(currentIter);
+      collection_done = derivedConfig_->isCollectionDone(now, currentIter);
+      // Stopping trace can also be done asynchronously maybe, but it seems not
+      // an expensive operation. so don't bother.
+      if (collection_done) {
+        LOG(INFO) << "Flush trace done, stopping trace";
+        stopTraceOrca();
+      }
     }
     return new_wakeup_time;
   }
@@ -1366,13 +1376,13 @@ void CuptiActivityProfiler::startTraceOrca() {
 
 void CuptiActivityProfiler::stopTraceOrca() {
 #ifdef HAS_CUPTI
-    cupti_.disableCuptiActivities(derivedConfig_->profileActivityTypes());
+  cupti_.disableCuptiActivities(derivedConfig_->profileActivityTypes());
 #else
-    cupti_.disableActivities(derivedConfig_->profileActivityTypes());
+  cupti_.disableActivities(derivedConfig_->profileActivityTypes());
 #endif
 
-  if (currentRunloopState_ == RunloopState::CollectTrace) {
-    VLOG(0) << "ContinuousFlush -> ProcessTrace";
+  if (currentRunloopState_ == RunloopState::ContinuousFlush) {
+    VLOG(0) << "ContinuousFlush -> WaitForRequest";
   } else {
     LOG(WARNING) << "Called stopTrace with state == "
                  << static_cast<std::underlying_type<RunloopState>::type>(
@@ -1942,6 +1952,7 @@ CuptiActivityProfiler::makeTraceSnapshot() {
 
   snapshot.captureWindowEndTime = libkineto::timeSinceEpoch(now);
 
+  snapshot.traceBuffers = std::make_unique<ActivityBuffers>();
   snapshot.traceBuffers->gpu = cupti_.activityBuffers();
   if (VLOG_IS_ON(1)) {
     addOverheadSample(snapshot.flushOverhead, cupti_.flushOverhead);
@@ -1951,6 +1962,8 @@ CuptiActivityProfiler::makeTraceSnapshot() {
   // traceBuffers_ will become nullptr after std::move
   snapshot.resourceOverheadCount = resourceOverheadCount_;
   snapshot.captureWindowStartTime = captureWindowStartTime_;
+  snapshot.derivedConfig = derivedConfig_.get();
+  snapshot.config = config_.get();
 
   return snapshot;
 }
