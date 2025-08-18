@@ -8,7 +8,12 @@
 
 #pragma once
 
+#include <memory>
+#include "libkineto.h"
+
 namespace libkineto {
+// forward declaration
+class CpuTraceSnapshotInterface;
 
 class ClientInterface {
  public:
@@ -17,7 +22,7 @@ class ClientInterface {
   virtual void prepare(bool, bool, bool, bool, bool) = 0;
   virtual void start() = 0;
   virtual void stop() = 0;
-  virtual void flush() = 0;
+  virtual std::unique_ptr<CpuTraceSnapshotInterface> flush() = 0;
 };
 
 } // namespace libkineto
