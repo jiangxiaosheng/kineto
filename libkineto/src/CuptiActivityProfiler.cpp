@@ -1192,7 +1192,7 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
   VLOG_IF(1, currentIter >= 0)
       << "Run loop on application step(), iteration = " << currentIter;
 
-  if (isOrcaMode()) {
+  if (libkineto::api().isOrcaMode()) {
     // If currentIter < 0, it's called from the long-running profiler thread
     // not from step(), so just return here.
     if (currentIter < 0) {

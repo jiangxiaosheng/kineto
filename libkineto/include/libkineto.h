@@ -38,8 +38,6 @@ void suppressLibkinetoLogMessages();
 int InitializeInjection(void);
 void libkineto_init(bool cpuOnly, bool logOnError);
 bool hasTestEnvVar();
-void setOrcaMode(bool flag);
-bool isOrcaMode();
 }
 
 namespace libkineto {
@@ -69,6 +67,13 @@ struct CpuTraceBuffer {
   std::deque<std::unique_ptr<GenericTraceActivity>> activities;
 };
 
+class CpuTraceSnapshotInterface {
+ public:
+  virtual ~CpuTraceSnapshotInterface() = default;
+
+  virtual CpuTraceBuffer process() = 0;
+};
+
 using ChildActivityProfilerFactory =
     std::function<std::unique_ptr<IActivityProfiler>()>;
 
@@ -93,6 +98,14 @@ class LibkinetoApi {
 
   ClientInterface* client() {
     return client_;
+  }
+
+  void setOrcaMode(bool flag) {
+    orcaMode_ = flag;
+  }
+
+  bool isOrcaMode() {
+    return orcaMode_;
   }
 
   void initProfilerIfRegistered() {
@@ -156,6 +169,7 @@ class LibkinetoApi {
   int32_t clientRegisterThread_{0};
 
   std::vector<ChildActivityProfilerFactory> childProfilerFactories_;
+  bool orcaMode_{false};
 };
 
 // Singleton
