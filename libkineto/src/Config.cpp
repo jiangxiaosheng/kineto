@@ -258,8 +258,20 @@ bool isDaemonEnvVarSet() {
   }();
   return rc;
 }
+
+bool isOrcaEnvVarSet() {
+  static bool rc = [] {
+    void* ptr = getenv(kOrcaEnvVar);
+    return ptr != nullptr;
+  }();
+  return rc;
+}
 #else
 bool isDaemonEnvVarSet() {
+  return false;
+}
+
+bool isOrcaEnvVarSet() {
   return false;
 }
 #endif

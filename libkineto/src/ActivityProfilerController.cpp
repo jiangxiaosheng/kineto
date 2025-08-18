@@ -269,8 +269,12 @@ void ActivityProfilerController::step() {
 // This function should only be called when holding the configLock_.
 void ActivityProfilerController::activateConfig(
     std::chrono::time_point<std::chrono::system_clock> now) {
-  logger_ = makeLogger(*asyncRequestConfig_);
-  profiler_->setLogger(logger_.get());
+  // With ORCA we will create a new logger for each step, so no need to set the
+  // logger here.
+  if (!libkineto::api().isOrcaMode()) {
+    logger_ = makeLogger(*asyncRequestConfig_);
+    profiler_->setLogger(logger_.get());
+  }
   LOGGER_OBSERVER_SET_TRIGGER_ON_DEMAND();
   profiler_->configure(*asyncRequestConfig_, now);
   asyncRequestConfig_ = nullptr;

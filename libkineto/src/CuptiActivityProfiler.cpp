@@ -1963,9 +1963,9 @@ void CuptiActivityProfiler::TraceSnapshot::finalizeTrace(
   //   }
   // }
 
-  for (const auto &iterations : traceSpans) {
-    for (const auto &span_pair : iterations.second) {
-      const TraceSpan &gpu_span = span_pair.second;
+  for (const auto& iterations : traceSpans) {
+    for (const auto& span_pair : iterations.second) {
+      const TraceSpan& gpu_span = span_pair.second;
       if (gpu_span.opCount > 0) {
         logger.handleTraceSpan(gpu_span);
       }
@@ -2093,8 +2093,12 @@ CuptiActivityProfiler::TraceSnapshot CuptiActivityProfiler::
 }
 
 void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
-  auto logger = std::unique_ptr<ActivityLogger>(new ChromeTraceLogger(
-      "/mnt/tmp/kineto_trace_step_" + std::to_string(currentIter) + ".json"));
+  std::string trace_file_name =
+      "/mnt/tmp/kineto_trace_step_" + std::to_string(currentIter) + ".json";
+  auto logger =
+      std::unique_ptr<ActivityLogger>(new ChromeTraceLogger(trace_file_name));
+  LOG(INFO) << "Created logger for step " << currentIter << " at "
+            << trace_file_name;
 
   // the trace snapshot must be constructed before we pass it to the processing
   // thread

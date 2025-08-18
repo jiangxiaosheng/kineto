@@ -448,7 +448,10 @@ private:
 };
 
 constexpr char kUseDaemonEnvVar[] = "KINETO_USE_DAEMON";
+constexpr char kOrcaEnvVar[] = "KINETO_ORCA";
 
 bool isDaemonEnvVarSet();
+
+bool isOrcaEnvVarSet();
 
 } // namespace libkineto
