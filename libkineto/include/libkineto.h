@@ -71,7 +71,7 @@ class CpuTraceSnapshotInterface {
  public:
   virtual ~CpuTraceSnapshotInterface() = default;
 
-  virtual CpuTraceBuffer process() = 0;
+  virtual std::unique_ptr<libkineto::CpuTraceBuffer> process() = 0;
 };
 
 using ChildActivityProfilerFactory =
