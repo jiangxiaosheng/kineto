@@ -440,7 +440,7 @@ class CuptiActivityProfiler {
       int32_t pid = processId();
       recordThreadInfo(sysTid, tid, pid);
     }
-  
+
     // T107508020: We can deprecate the recordThreadInfo(void) once we optimized
     // profiler_kineto
     void recordThreadInfo(int32_t sysTid, int32_t tid, int32_t pid) {

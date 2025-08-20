@@ -1490,6 +1490,10 @@ void CuptiActivityProfiler::TraceSnapshot::processTrace(
   if (auto props = devicePropertiesJson(); !props.empty()) {
     device_properties.push_back(props);
   }
+
+  // TODO: I don't see any session when running my test program but they
+  // should also get handled properly here, though not a big change.
+
   // for (const auto &session : sessions_) {
   //   if (auto props = session->getDeviceProperties(); !props.empty()) {
   //     if (std::find(device_properties.begin(), device_properties.end(),
@@ -1500,8 +1504,8 @@ void CuptiActivityProfiler::TraceSnapshot::processTrace(
   // }
   logger.handleTraceStart(
       metadata, fmt::format("{}", fmt::join(device_properties, ",")));
-  // setCpuActivityPresent(false);
-  // setGpuActivityPresent(false);
+  setCpuActivityPresent(false);
+  setGpuActivityPresent(false);
   for (auto& cpu_trace : traceBuffers->cpu) {
     string trace_name = cpu_trace->span.name;
     VLOG(0) << "Processing CPU buffer for " << trace_name << " ("
@@ -1546,7 +1550,6 @@ void CuptiActivityProfiler::TraceSnapshot::processTrace(
     LOG(WARNING) << kEmptyTrace;
   }
 
-  // TODO: this needs to be handled properly. Currently there is no session.
   // for (const auto &session : sessions_) {
   //   LOG(INFO) << "Processing child profiler trace";
   //   // cpuActivity() function here is used to get the linked cpuActivity for
@@ -2084,7 +2087,6 @@ CuptiActivityProfiler::TraceSnapshot CuptiActivityProfiler::
 
   snapshot.cpuOnly = cpuOnly_;
   // traceBuffers_ will become nullptr after std::move
-  snapshot.resourceOverheadCount = resourceOverheadCount_;
   snapshot.captureWindowStartTime = captureWindowStartTime_;
   snapshot.derivedConfig = derivedConfig_.get();
   snapshot.config = config_.get();
@@ -2093,24 +2095,24 @@ CuptiActivityProfiler::TraceSnapshot CuptiActivityProfiler::
 }
 
 void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
-  std::string trace_file_name =
-      "/mnt/tmp/kineto_trace_step_" + std::to_string(currentIter) + ".json";
-  auto logger =
-      std::unique_ptr<ActivityLogger>(new ChromeTraceLogger(trace_file_name));
-  LOG(INFO) << "Created logger for step " << currentIter << " at "
-            << trace_file_name;
-
   // the trace snapshot must be constructed before we pass it to the processing
   // thread
+  LOG(INFO) << "Making trace snapshot for step " << currentIter;
   auto trace_snapshot = makeTraceSnapshot();
   process_threads_.emplace_back(
-      [&logger, trace_snapshot = std::move(trace_snapshot)]() mutable {
+      [trace_snapshot = std::move(trace_snapshot), currentIter]() mutable {
+        // TODO: hardcode the path for testing. Should use the path specified from the config.
+        std::string trace_file_name = "/mnt/tmp/kineto_trace_step_" +
+            std::to_string(currentIter) + ".json";
+        auto logger = std::unique_ptr<ActivityLogger>(
+            new ChromeTraceLogger(trace_file_name));
+        LOG(INFO) << "Created json logger for step " << currentIter << " at "
+                  << trace_file_name;
         trace_snapshot.processTrace(*logger);
       });
-  // TODO: block just for testing
+
   auto& th = process_threads_.back();
-  th.join();
-  process_threads_.pop_back();
+  th.detach();
 }
 
 void CuptiActivityProfiler::finalizeTrace(
