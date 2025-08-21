@@ -562,7 +562,7 @@ class CuptiActivityProfiler {
     void updateGpuNetSpan(const ITraceActivity& gpuOp);
   };
 
-  TraceSnapshot makeTraceSnapshot();
+  std::shared_ptr<TraceSnapshot> makeTraceSnapshot();
 
   void logGpuVersions();
 
@@ -612,6 +612,9 @@ class CuptiActivityProfiler {
           ResourceInfo(device, id, id, fmt::format("Device {}", device)));
     }
   }
+
+  using ThreadPool = libkineto::impl::ThreadPool;
+  std::unique_ptr<ThreadPool> threadPool_;
 
   // Record client trace span for subsequent lookups from activities
   // Also creates a corresponding GPU-side span.
@@ -812,8 +815,6 @@ class CuptiActivityProfiler {
   uint32_t resourceOverheadCount_;
 
   ErrorCounts ecs_;
-
-  std::vector<std::thread> process_threads_;
 
   // LoggerCollector to collect all LOGs during the trace
 #if !USE_GOOGLE_LOG

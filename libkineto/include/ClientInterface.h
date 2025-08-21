@@ -22,7 +22,12 @@ class ClientInterface {
   virtual void prepare(bool, bool, bool, bool, bool) = 0;
   virtual void start() = 0;
   virtual void stop() = 0;
+  // Flush the traces and return a snapshot of the trace
+  // without terminating the profiler.
   virtual std::unique_ptr<CpuTraceSnapshotInterface> flush() = 0;
+  // Different from stop(), shutdown() just cleans up the client state
+  // and resources, and stops it, but does not drain the traces or process them.
+  virtual void shutdown() = 0;
 };
 
 } // namespace libkineto

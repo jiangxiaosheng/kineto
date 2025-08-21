@@ -140,11 +140,6 @@ void libkineto_init(bool cpuOnly, bool logOnError) {
     LOG(INFO) << "Registering daemon config loader, cpuOnly =  " << cpuOnly;
     DaemonConfigLoader::registerFactory();
   }
-
-  if (libkineto::isOrcaEnvVarSet()) {
-    LOG(INFO) << "Setting Kineto to ORCA mode";
-    libkineto::api().setOrcaMode(true);
-  }
 #endif
 
 #ifdef HAS_CUPTI

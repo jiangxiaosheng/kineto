@@ -9,8 +9,11 @@
 #include "CuptiActivityProfiler.h"
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+#include <unistd.h>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -1233,7 +1236,7 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
   VLOG_IF(1, currentIter >= 0)
       << "Run loop on application step(), iteration = " << currentIter;
 
-  if (libkineto::api().isOrcaMode()) {
+  if (config_->continuousFlushEnabled()) {
     // If currentIter < 0, it's called from the long-running profiler thread
     // not from step(), so just return here.
     if (currentIter < 0) {
@@ -1419,6 +1422,8 @@ void CuptiActivityProfiler::startTraceOrca() {
   if (libkineto::api().client()) {
     libkineto::api().client()->start();
   }
+  // init the thread pool
+  threadPool_ = std::make_unique<ThreadPool>(config_->threadPoolSize());
   currentRunloopState_ = RunloopState::ContinuousFlush;
 }
 
@@ -1441,8 +1446,11 @@ void CuptiActivityProfiler::stopTraceOrca() {
     session->stop();
   }
   if (libkineto::api().client()) {
-    libkineto::api().client()->stop();
+    // Do not call stop() because it will drain the traces and process them,
+    // which is unnecessary and untested.
+    libkineto::api().client()->shutdown();
   }
+  threadPool_.reset();
   currentRunloopState_ = RunloopState::WaitForRequest;
 }
 
@@ -2058,14 +2066,15 @@ void CuptiActivityProfiler::TraceSnapshot::processCpuTrace(
   logger.handleTraceSpan(cpu_span);
 }
 
-CuptiActivityProfiler::TraceSnapshot CuptiActivityProfiler::
+std::shared_ptr<CuptiActivityProfiler::TraceSnapshot> CuptiActivityProfiler::
     makeTraceSnapshot() {
   auto now = system_clock::now();
-  TraceSnapshot snapshot;
+  std::shared_ptr<TraceSnapshot> snapshot =
+      std::make_shared<TraceSnapshot>();
 
 #if defined(HAS_CUPTI) || defined(HAS_ROCTRACER)
   if (cupti_.stopCollection) {
-    snapshot.ecs.cupti_stopped_early = cupti_.stopCollection;
+    snapshot->ecs.cupti_stopped_early = cupti_.stopCollection;
     LOG(ERROR)
         << "State: CollectTrace stopped by CUPTI. (Buffer size configured is "
         << config_->activitiesMaxGpuBufferSize() / 1024 / 1024 << "MB)";
@@ -2074,45 +2083,56 @@ CuptiActivityProfiler::TraceSnapshot CuptiActivityProfiler::
 #endif // HAS_CUPTI || HAS_ROCTRACER
 
   if (libkineto::api().client()) {
-    snapshot.cpu_trace_snapshot = libkineto::api().client()->flush();
+    snapshot->cpu_trace_snapshot = libkineto::api().client()->flush();
   }
 
-  snapshot.traceBuffers = std::make_unique<ActivityBuffers>();
-  snapshot.captureWindowEndTime = libkineto::timeSinceEpoch(now);
+  snapshot->traceBuffers = std::make_unique<ActivityBuffers>();
+  snapshot->captureWindowEndTime = libkineto::timeSinceEpoch(now);
   // cpu traces are added later from cpu_trace_snapshot in the processing thread
-  snapshot.traceBuffers->gpu = cupti_.activityBuffers();
+  snapshot->traceBuffers->gpu = cupti_.activityBuffers();
   if (VLOG_IS_ON(1)) {
-    addOverheadSample(snapshot.flushOverhead, cupti_.flushOverhead);
+    addOverheadSample(snapshot->flushOverhead, cupti_.flushOverhead);
   }
 
-  snapshot.cpuOnly = cpuOnly_;
+  snapshot->cpuOnly = cpuOnly_;
   // traceBuffers_ will become nullptr after std::move
-  snapshot.captureWindowStartTime = captureWindowStartTime_;
-  snapshot.derivedConfig = derivedConfig_.get();
-  snapshot.config = config_.get();
+  snapshot->captureWindowStartTime = captureWindowStartTime_;
+  snapshot->derivedConfig = derivedConfig_.get();
+  snapshot->config = config_.get();
 
   return snapshot;
 }
 
 void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
+  static size_t iter_cnt = 0;
+  if (++iter_cnt % config_->flushInterval() != 0) {
+    return;
+  }
   // the trace snapshot must be constructed before we pass it to the processing
   // thread
   LOG(INFO) << "Making trace snapshot for step " << currentIter;
   auto trace_snapshot = makeTraceSnapshot();
-  process_threads_.emplace_back(
-      [trace_snapshot = std::move(trace_snapshot), currentIter]() mutable {
-        // TODO: hardcode the path for testing. Should use the path specified from the config.
-        std::string trace_file_name = "/mnt/tmp/kineto_trace_step_" +
-            std::to_string(currentIter) + ".json";
-        auto logger = std::unique_ptr<ActivityLogger>(
-            new ChromeTraceLogger(trace_file_name));
-        LOG(INFO) << "Created json logger for step " << currentIter << " at "
-                  << trace_file_name;
-        trace_snapshot.processTrace(*logger);
-      });
+  auto process_task = [](const std::shared_ptr<TraceSnapshot>& trace_snapshot,
+                         int64_t currentIter) {
+    const auto& log_dir = trace_snapshot->config->activitiesLogFile();
+    
+    if (!std::filesystem::exists(log_dir)) {
+      std::filesystem::create_directories(log_dir);
+    }
+    std::string trace_file_name =
+        fmt::format("{}/{}_step_{}.json", log_dir, processId(), currentIter);
+    auto logger =
+        std::unique_ptr<ActivityLogger>(new ChromeTraceLogger(trace_file_name));
+    if (logger == nullptr) {
+      LOG(ERROR) << "Failed to create json logger at " << trace_file_name;
+      return;
+    }
+    LOG(INFO) << "Created json logger for step " << currentIter << " at "
+              << trace_file_name;
+    trace_snapshot->processTrace(*logger);
+  };
 
-  auto& th = process_threads_.back();
-  th.detach();
+  threadPool_->enqueue(process_task, trace_snapshot, currentIter);
 }
 
 void CuptiActivityProfiler::finalizeTrace(

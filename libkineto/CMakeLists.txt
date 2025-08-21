@@ -308,7 +308,7 @@ install(FILES ${LIBKINETO_PUBLIC_HEADERS}
 install(EXPORT kinetoLibraryConfig DESTINATION share/cmake/kineto
   FILE kinetoLibraryConfig.cmake)
 
-# if(KINETO_BUILD_TESTS)
-#   add_subdirectory(test)
-#   add_subdirectory("${LIBKINETO_THIRDPARTY_DIR}/googletest")
-# endif()
+if(KINETO_BUILD_TESTS)
+  add_subdirectory(test)
+  add_subdirectory("${LIBKINETO_THIRDPARTY_DIR}/googletest")
+endif()

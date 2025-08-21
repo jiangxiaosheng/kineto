@@ -48,6 +48,9 @@ constexpr seconds kDefaultOnDemandConfigUpdateIntervalSecs(5);
 constexpr size_t kDefaultCuptiDeviceBufferSize(3200000);
 // Default value set by CUPTI is 250
 constexpr size_t kDefaultCuptiDeviceBufferPoolLimit(20);
+constexpr bool kDefaultEnableContinuousFlush(false);
+constexpr size_t kDefaultThreadPoolSize(1);
+constexpr int kDefaultFlushInterval(1);
 
 // Event Profiler
 constexpr char kEventsKey[] = "EVENTS";
@@ -90,6 +93,9 @@ constexpr char kProfileProfileMemory[] = "PROFILE_PROFILE_MEMORY";
 constexpr char kProfileWithStack[] = "PROFILE_WITH_STACK";
 constexpr char kProfileWithFlops[] = "PROFILE_WITH_FLOPS";
 constexpr char kProfileWithModules[] = "PROFILE_WITH_MODULES";
+constexpr char kEnableContinuousFlushKey[] = "PROFILE_CONTINUOUS_FLUSH";
+constexpr char kThreadPoolSizeKey[] = "PROFILE_THREAD_POOL_SIZE";
+constexpr char kFlushIntervalKey[] = "PROFILE_FLUSH_INTERVAL";
 
 constexpr char kActivitiesWarmupIterationsKey[] =
     "ACTIVITIES_WARMUP_ITERATIONS";
@@ -258,20 +264,8 @@ bool isDaemonEnvVarSet() {
   }();
   return rc;
 }
-
-bool isOrcaEnvVarSet() {
-  static bool rc = [] {
-    void* ptr = getenv(kOrcaEnvVar);
-    return ptr != nullptr;
-  }();
-  return rc;
-}
 #else
 bool isDaemonEnvVarSet() {
-  return false;
-}
-
-bool isOrcaEnvVarSet() {
   return false;
 }
 #endif
@@ -447,6 +441,12 @@ bool Config::handleOption(const std::string& name, std::string& val) {
     enableWithFlops_ = toBool(val);
   } else if (!name.compare(kProfileWithModules)) {
     enableWithModules_ = toBool(val);
+  } else if (!name.compare(kEnableContinuousFlushKey)) {
+    enableContinuousFlush_ = toBool(val);
+  } else if (!name.compare(kThreadPoolSizeKey)) {
+    threadPoolSize_ = toInt32(val);
+  } else if (!name.compare(kFlushIntervalKey)) {
+    flushInterval_ = toInt32(val);
   }
 
   // Common
@@ -530,6 +530,22 @@ void Config::validate(
     samplesPerReport_ = max_samples_per_report;
   }
 
+  if (!enableContinuousFlush_ && (threadPoolSize_ > 1 || flushInterval_ > 1)) {
+    LOG(WARNING)
+        << "Continuous flush is not enabled, but thread pool size or flush interval steps is set. "
+        << "Setting thread pool size to 1 and flush interval steps to 1.";
+    threadPoolSize_ = 1;
+    flushInterval_ = 1;
+  }
+
+  if (enableContinuousFlush_ && threadPoolSize_ > 1) {
+    int core_count = std::thread::hardware_concurrency();
+    if (threadPoolSize_ > core_count) {
+      LOG(WARNING) << "Thread pool size is greater than the number of cores. "
+                   << "This may cause performance degradation.";
+    }
+  }
+
   if (!hasProfileStartTime()) {
     VLOG(0)
         << "No explicit timestamp has been set. "
@@ -581,6 +597,13 @@ void Config::printActivityProfilerConfig(std::ostream& s) const {
       << std::endl;
     s << "  Warmup duration: " << activitiesWarmupDuration().count() << "s"
       << std::endl;
+  }
+
+  s << "  Continuous flush: " << (continuousFlushEnabled() ? "true" : "false")
+    << std::endl;
+  if (continuousFlushEnabled()) {
+    s << "  Thread pool size: " << threadPoolSize() << std::endl;
+    s << "  Flush interval steps: " << flushInterval() << std::endl;
   }
 
   s << "  Max GPU buffer size: " << activitiesMaxGpuBufferSize() / 1024 / 1024

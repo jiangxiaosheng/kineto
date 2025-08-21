@@ -207,6 +207,12 @@ public:
     return requestTimestamp_ + maxRequestAge() + activitiesWarmupDuration();
   }
 
+  bool continuousFlushEnabled() const { return enableContinuousFlush_; }
+
+  int flushInterval() const { return flushInterval_; }
+
+  int threadPoolSize() const { return threadPoolSize_; }
+
   bool hasProfileStartTime() const {
     return requestTimestamp_.time_since_epoch().count() > 0 ||
            profileStartTime_.time_since_epoch().count() > 0;
@@ -445,13 +451,22 @@ private:
 
   // CUPTI Timestamp Format
   bool useTSCTimestamp_{true};
+
+  // Below are the new config options for orca mode
+
+  // Enable continuous flush
+  bool enableContinuousFlush_;
+
+  // Thread pool size for continuous flush
+  int threadPoolSize_;
+
+  // Knob for controlling the interval in terms of number of iterations
+  // for continuous flush.
+  int flushInterval_;
 };
 
 constexpr char kUseDaemonEnvVar[] = "KINETO_USE_DAEMON";
-constexpr char kOrcaEnvVar[] = "KINETO_ORCA";
 
 bool isDaemonEnvVarSet();
-
-bool isOrcaEnvVarSet();
 
 } // namespace libkineto

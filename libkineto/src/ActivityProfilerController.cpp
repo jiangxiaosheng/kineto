@@ -271,7 +271,7 @@ void ActivityProfilerController::activateConfig(
     std::chrono::time_point<std::chrono::system_clock> now) {
   // With ORCA we will create a new logger for each step, so no need to set the
   // logger here.
-  if (!libkineto::api().isOrcaMode()) {
+  if (!asyncRequestConfig_->continuousFlushEnabled()) {
     logger_ = makeLogger(*asyncRequestConfig_);
     profiler_->setLogger(logger_.get());
   }

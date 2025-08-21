@@ -100,14 +100,6 @@ class LibkinetoApi {
     return client_;
   }
 
-  void setOrcaMode(bool flag) {
-    orcaMode_ = flag;
-  }
-
-  bool isOrcaMode() {
-    return orcaMode_;
-  }
-
   void initProfilerIfRegistered() {
     static std::once_flag once;
     if (activityProfiler_) {
@@ -169,7 +161,6 @@ class LibkinetoApi {
   int32_t clientRegisterThread_{0};
 
   std::vector<ChildActivityProfilerFactory> childProfilerFactories_;
-  bool orcaMode_{false};
 };
 
 // Singleton
