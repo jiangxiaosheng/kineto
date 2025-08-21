@@ -1006,6 +1006,16 @@ void CuptiActivityProfiler::configure(
     return;
   }
 
+  // Currently continuous flush mode is not supported with child profilers.
+  // It's not for technical reasons, just because normally there are no child
+  // profilers and to integrate it needs some effort.
+  if (config.continuousFlushEnabled() && profilers_.size() > 0) {
+    LOG(WARNING)
+        << "Continuous flush mode is not supported with child profilers, "
+        << "terminating";
+    return;
+  }
+
   config_ = config.clone();
 
   // Ensure we're starting in a clean state
@@ -1415,10 +1425,6 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
 void CuptiActivityProfiler::startTraceOrca() {
   captureWindowStartTime_ = libkineto::timeSinceEpoch(system_clock::now());
   VLOG(0) << "Warmup -> ContinuousFlush";
-  for (auto& session : sessions_) {
-    LOG(INFO) << "Starting child profiler session";
-    session->start();
-  }
   if (libkineto::api().client()) {
     libkineto::api().client()->start();
   }
@@ -1440,10 +1446,6 @@ void CuptiActivityProfiler::stopTraceOrca() {
     LOG(WARNING) << "Called stopTrace with state == "
                  << static_cast<std::underlying_type<RunloopState>::type>(
                         currentRunloopState_.load());
-  }
-  for (auto& session : sessions_) {
-    LOG(INFO) << "Stopping child profiler session";
-    session->stop();
   }
   if (libkineto::api().client()) {
     // Do not call stop() because it will drain the traces and process them,
@@ -1499,17 +1501,6 @@ void CuptiActivityProfiler::TraceSnapshot::processTrace(
     device_properties.push_back(props);
   }
 
-  // TODO: I don't see any session when running my test program but they
-  // should also get handled properly here, though not a big change.
-
-  // for (const auto &session : sessions_) {
-  //   if (auto props = session->getDeviceProperties(); !props.empty()) {
-  //     if (std::find(device_properties.begin(), device_properties.end(),
-  //                   props) == device_properties.end()) {
-  //       device_properties.push_back(props);
-  //     }
-  //   }
-  // }
   logger.handleTraceStart(
       metadata, fmt::format("{}", fmt::join(device_properties, ",")));
   setCpuActivityPresent(false);
@@ -1557,19 +1548,6 @@ void CuptiActivityProfiler::TraceSnapshot::processTrace(
   if (!traceNonEmpty()) {
     LOG(WARNING) << kEmptyTrace;
   }
-
-  // for (const auto &session : sessions_) {
-  //   LOG(INFO) << "Processing child profiler trace";
-  //   // cpuActivity() function here is used to get the linked cpuActivity for
-  //   // session's activities. Passing captureWindowStartTime_ and
-  //   // captureWindowEndTime_ in order to specify the range of activities that
-  //   // need to be processed.
-  //   session->processTrace(logger,
-  //                         std::bind(&CuptiActivityProfiler::cpuActivity,
-  //                         this,
-  //                                   std::placeholders::_1),
-  //                         captureWindowStartTime_, captureWindowEndTime_);
-  // }
 
   LOG(INFO) << "Record counts: " << ecs;
 
@@ -2069,8 +2047,7 @@ void CuptiActivityProfiler::TraceSnapshot::processCpuTrace(
 std::shared_ptr<CuptiActivityProfiler::TraceSnapshot> CuptiActivityProfiler::
     makeTraceSnapshot() {
   auto now = system_clock::now();
-  std::shared_ptr<TraceSnapshot> snapshot =
-      std::make_shared<TraceSnapshot>();
+  std::shared_ptr<TraceSnapshot> snapshot = std::make_shared<TraceSnapshot>();
 
 #if defined(HAS_CUPTI) || defined(HAS_ROCTRACER)
   if (cupti_.stopCollection) {
@@ -2115,7 +2092,7 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
   auto process_task = [](const std::shared_ptr<TraceSnapshot>& trace_snapshot,
                          int64_t currentIter) {
     const auto& log_dir = trace_snapshot->config->activitiesLogFile();
-    
+
     if (!std::filesystem::exists(log_dir)) {
       std::filesystem::create_directories(log_dir);
     }
