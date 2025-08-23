@@ -1428,7 +1428,15 @@ void CuptiActivityProfiler::startTraceOrca() {
   if (libkineto::api().client()) {
     libkineto::api().client()->start();
   }
-  // init the thread pool
+  // Init the thread pool.
+  //
+  // If the previous thread pool (if any) is still running, in its destructor
+  // it will wait for all the tasks to be finished before we start this new
+  // profiling round. Though in most cases we only do one profiling round
+  // in the pytorch program.
+  // This way we don't need to wait for threads to finish in stopTraceOrca()
+  // as that will be done when the pytorch program exits anyways, and it's
+  // helpful to avoid a huge tail latency in the step when the profiler stops.
   threadPool_ = std::make_unique<ThreadPool>(config_->threadPoolSize());
   currentRunloopState_ = RunloopState::ContinuousFlush;
 }
@@ -1436,9 +1444,18 @@ void CuptiActivityProfiler::startTraceOrca() {
 void CuptiActivityProfiler::stopTraceOrca() {
 #ifdef HAS_CUPTI
   cupti_.disableCuptiActivities(derivedConfig_->profileActivityTypes());
+  if (!cpuOnly_) {
+    cupti_.clearActivities();
+    cupti_.teardownContext();
+  }
 #else
   cupti_.disableActivities(derivedConfig_->profileActivityTypes());
 #endif
+
+#if !USE_GOOGLE_LOG
+  Logger::removeLoggerObserver(loggerCollectorMetadata_.get());
+#endif // !USE_GOOGLE_LOG
+  metadata_.clear();
 
   if (currentRunloopState_ == RunloopState::ContinuousFlush) {
     VLOG(0) << "ContinuousFlush -> WaitForRequest";
@@ -1452,7 +1469,6 @@ void CuptiActivityProfiler::stopTraceOrca() {
     // which is unnecessary and untested.
     libkineto::api().client()->shutdown();
   }
-  threadPool_.reset();
   currentRunloopState_ = RunloopState::WaitForRequest;
 }
 
@@ -2089,6 +2105,7 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
   // thread
   LOG(INFO) << "Making trace snapshot for step " << currentIter;
   auto trace_snapshot = makeTraceSnapshot();
+
   auto process_task = [](const std::shared_ptr<TraceSnapshot>& trace_snapshot,
                          int64_t currentIter) {
     const auto& log_dir = trace_snapshot->config->activitiesLogFile();
