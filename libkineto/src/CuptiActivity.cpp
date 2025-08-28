@@ -93,6 +93,23 @@ inline const std::string CudaSyncActivity::metadataJson() const {
   return "";
 }
 
+const ActivityArrowMetadata CudaSyncActivity::getArrowMetadata() const {
+  const CUpti_ActivitySynchronization& sync = raw();
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = sync.streamId;
+  arrowMetadata.correlation = sync.correlationId;
+  arrowMetadata.bytes = -1;
+  arrowMetadata.memBw = 0.0;
+  if (isEventSync(sync.type)) {
+    arrowMetadata.waitOnStream = srcStream_;
+    arrowMetadata.waitOnCudaEvent = srcCorrId_;
+  } else {
+    arrowMetadata.waitOnStream = -1;
+    arrowMetadata.waitOnCudaEvent = -1;
+  }
+  return arrowMetadata;
+}
+
 template <class T>
 inline void GpuActivity<T>::log(ActivityLogger& logger) const {
   logger.handleActivity(*this);
@@ -135,6 +152,19 @@ inline const std::string GpuActivity<CUpti_ActivityKernel4>::metadataJson()
   // clang-format on
 }
 
+template <>
+const ActivityArrowMetadata GpuActivity<CUpti_ActivityKernel4>::getArrowMetadata() const {
+  const CUpti_ActivityKernel4& kernel = raw();
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = kernel.streamId;
+  arrowMetadata.correlation = kernel.correlationId;
+  arrowMetadata.bytes = -1;
+  arrowMetadata.memBw = 0.0;
+  arrowMetadata.waitOnStream = -1;
+  arrowMetadata.waitOnCudaEvent = -1;
+  return arrowMetadata;
+}
+
 inline std::string memcpyName(uint8_t kind, uint8_t src, uint8_t dst) {
   return fmt::format(
       "Memcpy {} ({} -> {})",
@@ -173,6 +203,20 @@ inline const std::string GpuActivity<CUpti_ActivityMemcpy>::metadataJson()
 }
 
 template <>
+const ActivityArrowMetadata GpuActivity<CUpti_ActivityMemcpy>::getArrowMetadata() const {
+  const CUpti_ActivityMemcpy& memcpy = raw();
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = memcpy.streamId;
+  arrowMetadata.correlation = memcpy.correlationId;
+  arrowMetadata.bytes = static_cast<int64_t>(memcpy.bytes);
+  auto bw = bandwidth(memcpy.bytes, duration());
+  arrowMetadata.memBw = bw == "\"N/A\"" ? 0.0 : std::stod(bw);
+  arrowMetadata.waitOnStream = -1;
+  arrowMetadata.waitOnCudaEvent = -1;
+  return arrowMetadata;
+}
+
+template <>
 inline ActivityType GpuActivity<CUpti_ActivityMemcpy2>::type() const {
   return ActivityType::GPU_MEMCPY;
 }
@@ -197,6 +241,20 @@ inline const std::string GpuActivity<CUpti_ActivityMemcpy2>::metadataJson()
       memcpy.streamId, memcpy.correlationId,
       memcpy.bytes, bandwidth(memcpy.bytes, duration()));
   // clang-format on
+}
+
+template <>
+const ActivityArrowMetadata GpuActivity<CUpti_ActivityMemcpy2>::getArrowMetadata() const {
+  const CUpti_ActivityMemcpy2& memcpy = raw();
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = memcpy.streamId;
+  arrowMetadata.correlation = memcpy.correlationId;
+  arrowMetadata.bytes = static_cast<int64_t>(memcpy.bytes);
+  auto bw = bandwidth(memcpy.bytes, duration());
+  arrowMetadata.memBw = bw == "\"N/A\"" ? 0.0 : std::stod(bw);
+  arrowMetadata.waitOnStream = -1;
+  arrowMetadata.waitOnCudaEvent = -1;
+  return arrowMetadata;
 }
 
 template <>
@@ -226,6 +284,20 @@ inline const std::string GpuActivity<CUpti_ActivityMemset>::metadataJson()
   // clang-format on
 }
 
+template <>
+const ActivityArrowMetadata GpuActivity<CUpti_ActivityMemset>::getArrowMetadata() const {
+  const CUpti_ActivityMemset& memset = raw();
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = memset.streamId;
+  arrowMetadata.correlation = memset.correlationId;
+  arrowMetadata.bytes = static_cast<int64_t>(memset.bytes);
+  auto bw = bandwidth(memset.bytes, duration());
+  arrowMetadata.memBw = bw == "\"N/A\"" ? 0.0 : std::stod(bw);
+  arrowMetadata.waitOnStream = -1;
+  arrowMetadata.waitOnCudaEvent = -1;
+  return arrowMetadata;
+}
+
 inline void RuntimeActivity::log(ActivityLogger& logger) const {
   logger.handleActivity(*this);
 }
@@ -244,6 +316,17 @@ inline bool OverheadActivity::flowStart() const {
 
 inline const std::string OverheadActivity::metadataJson() const {
   return "";
+}
+
+const ActivityArrowMetadata OverheadActivity::getArrowMetadata() const {
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = -1;
+  arrowMetadata.correlation = -1;
+  arrowMetadata.bytes = -1;
+  arrowMetadata.memBw = 0.0;
+  arrowMetadata.waitOnStream = -1;
+  arrowMetadata.waitOnCudaEvent = -1;
+  return arrowMetadata;
 }
 
 inline bool RuntimeActivity::flowStart() const {
@@ -275,6 +358,17 @@ inline const std::string RuntimeActivity::metadataJson() const {
       activity_.correlationId);
 }
 
+const ActivityArrowMetadata RuntimeActivity::getArrowMetadata() const {
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = -1;
+  arrowMetadata.correlation = activity_.correlationId;
+  arrowMetadata.bytes = -1;
+  arrowMetadata.memBw = 0.0;
+  arrowMetadata.waitOnStream = -1;
+  arrowMetadata.waitOnCudaEvent = -1;
+  return arrowMetadata;
+}
+
 inline bool isKernelLaunchApi(const CUpti_ActivityAPI& activity_) {
   return activity_.cbid == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11060
@@ -295,6 +389,17 @@ inline const std::string DriverActivity::metadataJson() const {
       activity_.correlationId);
 }
 
+const ActivityArrowMetadata DriverActivity::getArrowMetadata() const {
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = -1;
+  arrowMetadata.correlation = activity_.correlationId;
+  arrowMetadata.bytes = -1;
+  arrowMetadata.memBw = 0.0;
+  arrowMetadata.waitOnStream = -1;
+  arrowMetadata.waitOnCudaEvent = -1;
+  return arrowMetadata;
+}
+
 inline const std::string DriverActivity::name() const {
   // currently only cuLaunchKernel/cuLaunchKernelEx is expected
   assert(isKernelLaunchApi(activity_));
@@ -313,6 +418,18 @@ inline const std::string DriverActivity::name() const {
 template <class T>
 inline const std::string GpuActivity<T>::metadataJson() const {
   return "";
+}
+
+template <class T>
+const ActivityArrowMetadata GpuActivity<T>::getArrowMetadata() const {
+  ActivityArrowMetadata arrowMetadata{};
+  arrowMetadata.stream = -1;
+  arrowMetadata.correlation = -1;
+  arrowMetadata.bytes = -1;
+  arrowMetadata.memBw = 0.0;
+  arrowMetadata.waitOnStream = -1;
+  arrowMetadata.waitOnCudaEvent = -1;
+  return arrowMetadata;
 }
 
 } // namespace KINETO_NAMESPACE

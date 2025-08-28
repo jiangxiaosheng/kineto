@@ -124,6 +124,17 @@ class GenericTraceActivity : public ITraceActivity {
     return json.str();
   }
 
+  const ActivityArrowMetadata getArrowMetadata() const override {
+    return {
+      .stream = -1,
+      .correlation = id,
+      .bytes = -1,
+      .memBw = 0.0,
+      .waitOnStream = -1,
+      .waitOnCudaEvent = -1,
+    };
+  }
+
   virtual ~GenericTraceActivity() override {}
 
   int64_t startTime{0};

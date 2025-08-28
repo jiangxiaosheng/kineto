@@ -26,6 +26,7 @@
 #include "ApproximateClock.h"
 #include "ILoggerObserver.h"
 #include "libkineto.h"
+#include "output_arrow.h"
 
 #ifdef HAS_CUPTI
 #include <cupti.h>
@@ -53,6 +54,7 @@
 #include "Logger.h"
 #include "ThreadUtil.h"
 #include "output_json.h"
+#include "output_arrow.h"
 
 using namespace std::chrono;
 using std::string;
@@ -2113,16 +2115,14 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
     if (!std::filesystem::exists(log_dir)) {
       std::filesystem::create_directories(log_dir);
     }
-    std::string trace_file_name =
-        fmt::format("{}/{}_step_{}.json", log_dir, processId(), currentIter);
-    auto logger =
-        std::unique_ptr<ActivityLogger>(new ChromeTraceLogger(trace_file_name));
+    std::string table_name = fmt::format("/mnt/tmp/step_{}.parquet", currentIter);
+    auto logger = std::unique_ptr<ActivityLogger>(new ArrowTraceLogger(table_name));
     if (logger == nullptr) {
-      LOG(ERROR) << "Failed to create json logger at " << trace_file_name;
+      LOG(ERROR) << "Failed to create arrow logger at " << table_name;
       return;
     }
-    LOG(INFO) << "Created json logger for step " << currentIter << " at "
-              << trace_file_name;
+    LOG(INFO) << "Created arrow logger for step " << currentIter << " at "
+              << table_name;
     trace_snapshot->processTrace(*logger);
   };
 

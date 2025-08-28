@@ -89,7 +89,7 @@ struct CuptiActivity : public ITraceActivity {
   const TraceSpan* traceSpan() const override {
     return nullptr;
   }
-
+  
  protected:
   const T& activity_;
   const ITraceActivity* linked_{nullptr};
@@ -120,6 +120,7 @@ struct RuntimeActivity : public CuptiActivity<CUpti_ActivityAPI> {
   }
   void log(ActivityLogger& logger) const override;
   const std::string metadataJson() const override;
+  const ActivityArrowMetadata getArrowMetadata() const override;
 
  private:
   const int32_t threadId_;
@@ -148,6 +149,7 @@ struct DriverActivity : public CuptiActivity<CUpti_ActivityAPI> {
   const std::string name() const override;
   void log(ActivityLogger& logger) const override;
   const std::string metadataJson() const override;
+  const ActivityArrowMetadata getArrowMetadata() const override;
 
  private:
   const int32_t threadId_;
@@ -202,6 +204,7 @@ struct OverheadActivity : public CuptiActivity<CUpti_ActivityOverhead> {
   }
   void log(ActivityLogger& logger) const override;
   const std::string metadataJson() const override;
+  const ActivityArrowMetadata getArrowMetadata() const override;
 
  private:
   const int32_t threadId_;
@@ -234,6 +237,7 @@ struct CudaSyncActivity : public CuptiActivity<CUpti_ActivitySynchronization> {
   const CUpti_ActivitySynchronization& raw() const {
     return CuptiActivity<CUpti_ActivitySynchronization>::raw();
   }
+  const ActivityArrowMetadata getArrowMetadata() const override;
 
  private:
   const int32_t srcStream_;
@@ -265,6 +269,7 @@ struct GpuActivity : public CuptiActivity<T> {
   const T& raw() const {
     return CuptiActivity<T>::raw();
   }
+  const ActivityArrowMetadata getArrowMetadata() const override;
 };
 
 } // namespace KINETO_NAMESPACE

@@ -17,6 +17,18 @@ namespace libkineto {
 class ActivityLogger;
 struct TraceSpan;
 
+// These metadata cannot be directly retrieved via public methods, and they
+// are needed to build the arrow table for HTA, so we add this struct to hold
+// the relevant metadata and a new method to get it.
+struct ActivityArrowMetadata {
+  int64_t stream;
+  int64_t correlation;
+  int64_t bytes;
+  double memBw;
+  int64_t waitOnStream;
+  int64_t waitOnCudaEvent;
+};
+
 // Generic activity interface is borrowed from tensorboard protobuf format.
 struct ITraceActivity {
   virtual ~ITraceActivity() {}
@@ -53,6 +65,8 @@ struct ITraceActivity {
   virtual const std::string getMetadataValue(const std::string& key) const {
     return "";
   }
+  // Return the required metadata for HTA
+  virtual const ActivityArrowMetadata getArrowMetadata() const = 0;
 
   static int64_t nsToUs(int64_t ns) {
     // It's important that this conversion is the same everywhere.

@@ -238,11 +238,15 @@ message(INFO " IPCFABRIC_INCLUDE_DIR = ${IPCFABRIC_INCLUDE_DIR}")
 add_subdirectory("${IPCFABRIC_INCLUDE_DIR}")
 target_link_libraries(kineto_base PRIVATE dynolog_ipcfabric_lib)
 
+find_package(Arrow REQUIRED)
+find_package(Parquet REQUIRED)
+
 target_include_directories(kineto_base PUBLIC
       $<BUILD_INTERFACE:${LIBKINETO_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${LIBKINETO_SOURCE_DIR}>
       $<BUILD_INTERFACE:${DYNOLOG_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${FMT_INCLUDE_DIR}>
+      $<BUILD_INTERFACE:${ARROW_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${IPCFABRIC_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${CUPTI_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${CUDA_INCLUDE_DIRS}>
@@ -276,6 +280,8 @@ elseif(KINETO_LIBRARY_TYPE STREQUAL "shared")
 else()
   message(FATAL_ERROR "Unsupported library type ${KINETO_LIBRARY_TYPE}")
 endif()
+
+target_link_libraries(kineto Arrow::arrow_shared Parquet::parquet_shared)
 
 if(NOT LIBKINETO_NOROCTRACER)
   find_library(ROCTRACER_LIBRARY NAMES libroctracer64.so HINTS
