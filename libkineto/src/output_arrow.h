@@ -5,14 +5,41 @@
 #include "output_base.h"
 
 #include <arrow/api.h>
+#include <arrow/scalar.h>
 #include <arrow/type_fwd.h>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <shared_mutex>
 
 namespace KINETO_NAMESPACE {
 
+struct ArrowStats {
+  std::vector<size_t> num_rows;
+  std::vector<size_t> bytes;
+  // Durations of logging in-memory trace records into arrow record batches,
+  // including both preprocessing cpu and gpu traces and appending them
+  // to the record batch plus generating the complete record batch.
+  std::vector<uint64_t> logging_durations;
+
+
+  // Used to measure the end-to-end rates between flushing starts and ends.
+  // This is much lower than the rates the writing arrow record batches can
+  // achieve because it contains the training durations too.
+  // Therefore, the end-to-end rates should be treated as a reflection of
+  // how fast the pytorch program is generating traces, rather than the
+  // maximum rates arrow logger can achieve.
+  int64_t start_time;
+  int64_t end_time;
+
+  std::shared_mutex rw_mutex;
+};
+
 class ArrowTraceLogger : public ActivityLogger {
  public:
-  explicit ArrowTraceLogger(const std::string& arrowTableName);
+  explicit ArrowTraceLogger(
+      const std::string& arrowTableName,
+      ArrowStats* arrowStats);
 
   void handleDeviceInfo(const DeviceInfo& info, uint64_t time) override;
 
@@ -36,6 +63,10 @@ class ArrowTraceLogger : public ActivityLogger {
       std::unordered_map<std::string, std::vector<std::string>>& metadata)
       override;
 
+  void setStartTime(int64_t startTime) override {
+    startTime_ = startTime;
+  }
+
  private:
   struct ActivityArrowFields {
     std::string cat;
@@ -54,8 +85,12 @@ class ArrowTraceLogger : public ActivityLogger {
 
   std::string arrowTableName_;
   std::shared_ptr<arrow::Schema> schema_;
+  ArrowStats* arrowStats_ = nullptr;
+  int64_t startTime_ = 0;
+  int rank_ = -1;
 
   // Column builders
+  arrow::Int32Builder rankBuilder_;
   arrow::StringBuilder catBuilder_;
   arrow::StringBuilder nameBuilder_;
   arrow::Int64Builder pidBuilder_;

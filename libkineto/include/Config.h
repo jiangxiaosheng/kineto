@@ -455,14 +455,14 @@ private:
   // Below are the new config options for orca mode
 
   // Enable continuous flush
-  bool enableContinuousFlush_;
+  bool enableContinuousFlush_{false};
 
   // Thread pool size for continuous flush
-  int threadPoolSize_;
+  int threadPoolSize_{1};
 
   // Knob for controlling the interval in terms of number of iterations
   // for continuous flush.
-  int flushInterval_;
+  int flushInterval_{1};
 };
 
 constexpr char kUseDaemonEnvVar[] = "KINETO_USE_DAEMON";

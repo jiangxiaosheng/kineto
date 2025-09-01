@@ -53,8 +53,8 @@
 
 #include "Logger.h"
 #include "ThreadUtil.h"
-#include "output_json.h"
 #include "output_arrow.h"
+#include "output_json.h"
 
 using namespace std::chrono;
 using std::string;
@@ -1266,6 +1266,7 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
       if (warmup_done) {
         LOG(INFO) << "Warmup done, starting trace";
         startTraceOrca();
+        arrowStats_.start_time = libkineto::timeSinceEpoch(now);
       }
     } else if (currentRunloopState_ == RunloopState::ContinuousFlush) {
       LOG(INFO) << "Flush trace at iteration " << currentIter;
@@ -1276,9 +1277,29 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
       if (collection_done) {
         LOG(INFO) << "Flush trace done, stopping trace";
         stopTraceOrca();
+        arrowStats_.end_time = libkineto::timeSinceEpoch(now);
+        auto total_rows = std::accumulate(
+            arrowStats_.num_rows.begin(), arrowStats_.num_rows.end(), 0ull);
+        auto total_bytes = std::accumulate(
+            arrowStats_.bytes.begin(), arrowStats_.bytes.end(), 0ull);
+        auto total_duration =
+            static_cast<double>(arrowStats_.end_time - arrowStats_.start_time) /
+            1e9;
+        auto logging_duration = static_cast<double>(std::accumulate(
+                                    arrowStats_.logging_durations.begin(),
+                                    arrowStats_.logging_durations.end(),
+                                    0ull)) /
+            1e9;
+        LOG(INFO) << fmt::format(
+            "Arrow stats: end-to-end {:.2f} rows/s, {:.2f} bytes/s, "
+            "logging {:.2f} rows/s, {:.2f} bytes/s",
+            static_cast<double>(total_rows) / total_duration,
+            static_cast<double>(total_bytes) / total_duration,
+            static_cast<double>(total_rows) / logging_duration,
+            static_cast<double>(total_bytes) / logging_duration);
       }
+      return new_wakeup_time;
     }
-    return new_wakeup_time;
   }
 
   switch (currentRunloopState_) {
@@ -1346,20 +1367,21 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
           || cupti_.stopCollection
 #endif // HAS_CUPTI || HAS_ROCTRACER
       ) {
-        // Update runloop state first to prevent further updates to shared state
+        // Update runloop state first to prevent further updates to shared
+        // state
         LOG(INFO) << "Tracing complete.";
         VLOG_IF(1, currentIter >= 0)
             << "This state change was invoked by application's step() call";
 
         // currentIter >= 0 means this is called from the step() api of
-        // the profile in pytorch main thread, it should be executed in another
-        // thread in case pytorch main thread is blocked
+        // the profile in pytorch main thread, it should be executed in
+        // another thread in case pytorch main thread is blocked
         if (currentIter >= 0) {
           // if collectTraceThread_ is already running, there's no need to
           // execute collectTrace twice.
-          // Do not call collectTrace when profilerThread_ is collecting Trace.
-          // Otherwise, libkineto::api().client()->stop will be called twice,
-          // which leads to an unrecoverable ::c10:Error at
+          // Do not call collectTrace when profilerThread_ is collecting
+          // Trace. Otherwise, libkineto::api().client()->stop will be called
+          // twice, which leads to an unrecoverable ::c10:Error at
           // disableProfiler
           if (!collectTraceThread_ && !getCollectTraceState()) {
             std::lock_guard<std::recursive_mutex> guard(mutex_);
@@ -1605,8 +1627,8 @@ void CuptiActivityProfiler::TraceSnapshot::handleRuntimeActivity(
           << ": CUPTI_ACTIVITY_KIND_RUNTIME, cbid=" << activity->cbid
           << " tid=" << activity->threadId;
   int32_t tid = activity->threadId;
-  // It's safe to call processId() here as the processing thread will share the
-  // same pid as the main thread so it won't change the original logics
+  // It's safe to call processId() here as the processing thread will share
+  // the same pid as the main thread so it won't change the original logics
   const auto& it = resourceInfo.find({processId(), tid});
   if (it != resourceInfo.end()) {
     tid = it->second.id;
@@ -2083,7 +2105,8 @@ std::shared_ptr<CuptiActivityProfiler::TraceSnapshot> CuptiActivityProfiler::
 
   snapshot->traceBuffers = std::make_unique<ActivityBuffers>();
   snapshot->captureWindowEndTime = libkineto::timeSinceEpoch(now);
-  // cpu traces are added later from cpu_trace_snapshot in the processing thread
+  // cpu traces are added later from cpu_trace_snapshot in the processing
+  // thread
   snapshot->traceBuffers->gpu = cupti_.activityBuffers();
   if (VLOG_IS_ON(1)) {
     addOverheadSample(snapshot->flushOverhead, cupti_.flushOverhead);
@@ -2103,30 +2126,42 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
   if (++iter_cnt % config_->flushInterval() != 0) {
     return;
   }
-  // the trace snapshot must be constructed before we pass it to the processing
-  // thread
+  // the trace snapshot must be constructed before we pass it to the
+  // processing thread
   LOG(INFO) << "Making trace snapshot for step " << currentIter;
   auto trace_snapshot = makeTraceSnapshot();
 
   auto process_task = [](const std::shared_ptr<TraceSnapshot>& trace_snapshot,
-                         int64_t currentIter) {
+                         int64_t currentIter,
+                         ArrowStats* arrowStats) {
     const auto& log_dir = trace_snapshot->config->activitiesLogFile();
 
     if (!std::filesystem::exists(log_dir)) {
       std::filesystem::create_directories(log_dir);
     }
-    std::string table_name = fmt::format("/mnt/tmp/step_{}.parquet", currentIter);
-    auto logger = std::unique_ptr<ActivityLogger>(new ArrowTraceLogger(table_name));
+    const char* rank = getenv("RANK");
+    std::string table_name;
+    if (!rank) {
+      table_name = fmt::format(
+          "{}/{}_step_{}.parquet", log_dir, processId(), currentIter);
+    } else {
+      table_name =
+          fmt::format("{}/rank_{}_step_{}.parquet", log_dir, rank, currentIter);
+    }
+    auto logger = std::unique_ptr<ActivityLogger>(
+        new ArrowTraceLogger(table_name, arrowStats));
     if (logger == nullptr) {
       LOG(ERROR) << "Failed to create arrow logger at " << table_name;
       return;
     }
     LOG(INFO) << "Created arrow logger for step " << currentIter << " at "
               << table_name;
+    auto start_time = timeSinceEpoch(std::chrono::system_clock::now());
+    logger->setStartTime(start_time);
     trace_snapshot->processTrace(*logger);
   };
 
-  threadPool_->enqueue(process_task, trace_snapshot, currentIter);
+  threadPool_->enqueue(process_task, trace_snapshot, currentIter, &arrowStats_);
 }
 
 void CuptiActivityProfiler::finalizeTrace(

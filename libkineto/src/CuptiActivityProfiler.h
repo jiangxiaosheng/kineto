@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "output_arrow.h"
 
 // TODO(T90238193)
 // @lint-ignore-every CLANGTIDY facebook-hte-RelativeInclude
@@ -815,6 +816,8 @@ class CuptiActivityProfiler {
   uint32_t resourceOverheadCount_;
 
   ErrorCounts ecs_;
+
+  ArrowStats arrowStats_;
 
   // LoggerCollector to collect all LOGs during the trace
 #if !USE_GOOGLE_LOG

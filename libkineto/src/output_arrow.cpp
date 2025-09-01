@@ -1,6 +1,8 @@
 #include "output_arrow.h"
 #include <arrow/array/array_base.h>
 #include <arrow/io/api.h>
+#include <arrow/ipc/api.h>
+#include <arrow/record_batch.h>
 #include <arrow/result.h>
 #include <arrow/type_fwd.h>
 #include <parquet/arrow/writer.h>
@@ -68,9 +70,12 @@ static inline int32_t sanitizeTid(int32_t tid) {
   return std::abs(tid);
 }
 
-ArrowTraceLogger::ArrowTraceLogger(const std::string& arrowTableName)
-    : arrowTableName_(arrowTableName) {
+ArrowTraceLogger::ArrowTraceLogger(
+    const std::string& arrowTableName,
+    ArrowStats* arrowStats)
+    : arrowTableName_(arrowTableName), arrowStats_(arrowStats) {
   std::vector<std::shared_ptr<arrow::Field>> fields = {
+      arrow::field("rank", arrow::int32()),
       arrow::field("cat", arrow::utf8()),
       arrow::field("name", arrow::utf8()),
       arrow::field("pid", arrow::int64()),
@@ -86,6 +91,11 @@ ArrowTraceLogger::ArrowTraceLogger(const std::string& arrowTableName)
       arrow::field("wait_on_cuda_event_record_corr_id", arrow::int64()),
   };
   schema_ = std::make_shared<arrow::Schema>(fields);
+  // If run by torchrun, the rank is set in the environment variable.
+  const char* rank = getenv("RANK");
+  if (rank) {
+    rank_ = std::stoi(rank);
+  }
 }
 
 // 'dur' = 0, do nothing
@@ -171,6 +181,7 @@ void ArrowTraceLogger::handleActivity(const ITraceActivity& op) {
 
 arrow::Status ArrowTraceLogger::appendActivity(
     const ActivityArrowFields& fields) {
+  ARROW_RETURN_NOT_OK(rankBuilder_.Append(rank_));
   ARROW_RETURN_NOT_OK(catBuilder_.Append(fields.cat));
   ARROW_RETURN_NOT_OK(nameBuilder_.Append(fields.name));
   ARROW_RETURN_NOT_OK(pidBuilder_.Append(fields.pid));
@@ -192,6 +203,8 @@ arrow::Status ArrowTraceLogger::appendActivity(
 
 arrow::Result<std::shared_ptr<arrow::RecordBatch>> ArrowTraceLogger::
     buildArrowTable() {
+  std::shared_ptr<arrow::Array> rank_array;
+  ARROW_RETURN_NOT_OK(rankBuilder_.Finish(&rank_array));
   std::shared_ptr<arrow::Array> cat_array;
   ARROW_RETURN_NOT_OK(catBuilder_.Finish(&cat_array));
   std::shared_ptr<arrow::Array> name_array;
@@ -220,6 +233,7 @@ arrow::Result<std::shared_ptr<arrow::RecordBatch>> ArrowTraceLogger::
   ARROW_RETURN_NOT_OK(waitOnCudaEventBuilder_.Finish(&waitOnCudaEvent_array));
 
   std::vector<std::shared_ptr<arrow::Array>> columns = {
+      rank_array,
       cat_array,
       name_array,
       pid_array,
@@ -233,7 +247,7 @@ arrow::Result<std::shared_ptr<arrow::RecordBatch>> ArrowTraceLogger::
       memBw_array,
       waitOnStream_array,
       waitOnCudaEvent_array};
-  auto num_rows = cat_array->length();
+  auto num_rows = rank_array->length();
   bool ok = std::all_of(
       columns.begin(),
       columns.end(),
@@ -256,7 +270,21 @@ void ArrowTraceLogger::finalizeTrace(
     int64_t endTime,
     std::unordered_map<std::string, std::vector<std::string>>& metadata) {
   auto rb = buildArrowTable().ValueOrDie();
-  // FIXME: Write to parquet just for testing. Should send out this arrow table via RPC.
+  int64_t ipcsz = 0;
+  auto szstatus = arrow::ipc::GetRecordBatchSize(*rb, &ipcsz);
+  if (!szstatus.ok()) {
+    LOG(ERROR) << "Failed to get record batch size";
+    return;
+  }
+  {
+    std::lock_guard guard(arrowStats_->rw_mutex);
+    arrowStats_->num_rows.push_back(rb->num_rows());
+    arrowStats_->bytes.push_back(ipcsz);
+    arrowStats_->logging_durations.push_back(
+        timeSinceEpoch(std::chrono::system_clock::now()) - startTime_);
+  }
+  // FIXME: Write to parquet just for testing. Should send out this arrow table
+  // via RPC.
   std::shared_ptr<arrow::io::FileOutputStream> outfile;
   outfile = arrow::io::FileOutputStream::Open(arrowTableName_).ValueOrDie();
   auto arrow_writer = parquet::arrow::FileWriter::Open(
@@ -266,6 +294,7 @@ void ArrowTraceLogger::finalizeTrace(
   if (!status.ok()) {
     LOG(ERROR) << "Failed to write record batch";
   }
+
   status = arrow_writer->Close();
   if (!status.ok()) {
     LOG(ERROR) << "Failed to close arrow writer";

@@ -68,6 +68,9 @@ class ActivityLogger {
       std::unique_ptr<ActivityBuffers> buffers,
       int64_t endTime,
       std::unordered_map<std::string, std::vector<std::string>>& metadata) = 0;
+  
+  // Set the start time of the preprocessing. Only used for ArrowTraceLogger.
+  virtual void setStartTime(int64_t startTime) {}
 
  protected:
   ActivityLogger() = default;
