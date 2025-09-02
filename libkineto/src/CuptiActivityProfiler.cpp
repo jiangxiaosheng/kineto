@@ -1298,8 +1298,8 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
             static_cast<double>(total_rows) / logging_duration,
             static_cast<double>(total_bytes) / logging_duration);
       }
-      return new_wakeup_time;
     }
+    return new_wakeup_time;
   }
 
   switch (currentRunloopState_) {
