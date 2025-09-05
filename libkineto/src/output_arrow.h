@@ -22,7 +22,6 @@ struct ArrowStats {
   // to the record batch plus generating the complete record batch.
   std::vector<uint64_t> logging_durations;
 
-
   // Used to measure the end-to-end rates between flushing starts and ends.
   // This is much lower than the rates the writing arrow record batches can
   // achieve because it contains the training durations too.

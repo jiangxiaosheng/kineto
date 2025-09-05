@@ -1266,7 +1266,10 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
       if (warmup_done) {
         LOG(INFO) << "Warmup done, starting trace";
         startTraceOrca();
-        arrowStats_.start_time = libkineto::timeSinceEpoch(now);
+
+        if (config_->useArrowLogger()) {
+          arrowStats_.start_time = libkineto::timeSinceEpoch(now);
+        }
       }
     } else if (currentRunloopState_ == RunloopState::ContinuousFlush) {
       LOG(INFO) << "Flush trace at iteration " << currentIter;
@@ -1277,26 +1280,30 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
       if (collection_done) {
         LOG(INFO) << "Flush trace done, stopping trace";
         stopTraceOrca();
-        arrowStats_.end_time = libkineto::timeSinceEpoch(now);
-        auto total_rows = std::accumulate(
-            arrowStats_.num_rows.begin(), arrowStats_.num_rows.end(), 0ull);
-        auto total_bytes = std::accumulate(
-            arrowStats_.bytes.begin(), arrowStats_.bytes.end(), 0ull);
-        auto total_duration =
-            static_cast<double>(arrowStats_.end_time - arrowStats_.start_time) /
-            1e9;
-        auto logging_duration = static_cast<double>(std::accumulate(
-                                    arrowStats_.logging_durations.begin(),
-                                    arrowStats_.logging_durations.end(),
-                                    0ull)) /
-            1e9;
-        LOG(INFO) << fmt::format(
-            "Arrow stats: end-to-end {:.2f} rows/s, {:.2f} bytes/s, "
-            "logging {:.2f} rows/s, {:.2f} bytes/s",
-            static_cast<double>(total_rows) / total_duration,
-            static_cast<double>(total_bytes) / total_duration,
-            static_cast<double>(total_rows) / logging_duration,
-            static_cast<double>(total_bytes) / logging_duration);
+
+        if (config_->useArrowLogger()) {
+          arrowStats_.end_time = libkineto::timeSinceEpoch(now);
+          auto total_rows = std::accumulate(
+              arrowStats_.num_rows.begin(), arrowStats_.num_rows.end(), 0ull);
+          auto total_bytes = std::accumulate(
+              arrowStats_.bytes.begin(), arrowStats_.bytes.end(), 0ull);
+          auto total_duration =
+              static_cast<double>(
+                  arrowStats_.end_time - arrowStats_.start_time) /
+              1e9;
+          auto logging_duration = static_cast<double>(std::accumulate(
+                                      arrowStats_.logging_durations.begin(),
+                                      arrowStats_.logging_durations.end(),
+                                      0ull)) /
+              1e9;
+          LOG(INFO) << fmt::format(
+              "Arrow stats: end-to-end {:.2f} rows/s, {:.2f} bytes/s, "
+              "logging {:.2f} rows/s, {:.2f} bytes/s",
+              static_cast<double>(total_rows) / total_duration,
+              static_cast<double>(total_bytes) / total_duration,
+              static_cast<double>(total_rows) / logging_duration,
+              static_cast<double>(total_bytes) / logging_duration);
+        }
       }
     }
     return new_wakeup_time;
@@ -1488,11 +1495,9 @@ void CuptiActivityProfiler::stopTraceOrca() {
                  << static_cast<std::underlying_type<RunloopState>::type>(
                         currentRunloopState_.load());
   }
-  if (libkineto::api().client()) {
-    // Do not call stop() because it will drain the traces and process them,
-    // which is unnecessary and untested.
-    libkineto::api().client()->shutdown();
-  }
+  // Shutdown CPU trace should be done when the final preprocessing
+  // task finishes, otherwise kineto thread local state being destroyed
+  // will likely cause segfault while preprocessing is still running.
   currentRunloopState_ = RunloopState::WaitForRequest;
 }
 
@@ -2126,12 +2131,14 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
   if (++iter_cnt % config_->flushInterval() != 0) {
     return;
   }
+  
   // the trace snapshot must be constructed before we pass it to the
   // processing thread
   LOG(INFO) << "Making trace snapshot for step " << currentIter;
   auto trace_snapshot = makeTraceSnapshot();
 
-  auto process_task = [](const std::shared_ptr<TraceSnapshot>& trace_snapshot,
+  bool is_last_step = currentIter == derivedConfig_->profileEndIteration();
+  auto process_task = [is_last_step](const std::shared_ptr<TraceSnapshot>& trace_snapshot,
                          int64_t currentIter,
                          ArrowStats* arrowStats) {
     const auto& log_dir = trace_snapshot->config->activitiesLogFile();
@@ -2142,25 +2149,33 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
     const char* rank = getenv("RANK");
     std::string table_name;
     if (!rank) {
-      table_name = fmt::format(
-          "{}/{}_step_{}.parquet", log_dir, processId(), currentIter);
+      table_name =
+          fmt::format("{}/{}_step_{}", log_dir, processId(), currentIter);
     } else {
       table_name =
-          fmt::format("{}/rank_{}_step_{}.parquet", log_dir, rank, currentIter);
+          fmt::format("{}/rank_{}_step_{}", log_dir, rank, currentIter);
     }
-    auto logger = std::unique_ptr<ActivityLogger>(
-        new ArrowTraceLogger(table_name, arrowStats));
-    if (logger == nullptr) {
-      LOG(ERROR) << "Failed to create arrow logger at " << table_name;
-      return;
+    std::unique_ptr<ActivityLogger> logger;
+    if (trace_snapshot->config->useArrowLogger()) {
+      table_name += ".parquet";
+      logger = std::unique_ptr<ActivityLogger>(new ArrowTraceLogger(table_name, arrowStats));
+      auto start_time = timeSinceEpoch(std::chrono::system_clock::now());
+      logger->setStartTime(start_time);
+    } else {
+      table_name += ".json";
+      logger = std::unique_ptr<ActivityLogger>(new ChromeTraceLogger(table_name));
     }
     LOG(INFO) << "Created arrow logger for step " << currentIter << " at "
               << table_name;
-    auto start_time = timeSinceEpoch(std::chrono::system_clock::now());
-    logger->setStartTime(start_time);
+    
     trace_snapshot->processTrace(*logger);
-  };
 
+    if (is_last_step) {
+      if (libkineto::api().client()) {
+        libkineto::api().client()->shutdown();
+      }
+    }
+  };
   threadPool_->enqueue(process_task, trace_snapshot, currentIter, &arrowStats_);
 }
 
