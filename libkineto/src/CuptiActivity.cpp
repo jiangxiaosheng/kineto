@@ -93,9 +93,9 @@ inline const std::string CudaSyncActivity::metadataJson() const {
   return "";
 }
 
-const ActivityArrowMetadata CudaSyncActivity::getArrowMetadata() const {
+const ActivityExtraFields CudaSyncActivity::getExtraFields() const {
   const CUpti_ActivitySynchronization& sync = raw();
-  ActivityArrowMetadata arrowMetadata{};
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = sync.streamId;
   arrowMetadata.correlation = sync.correlationId;
   arrowMetadata.bytes = -1;
@@ -153,9 +153,9 @@ inline const std::string GpuActivity<CUpti_ActivityKernel4>::metadataJson()
 }
 
 template <>
-const ActivityArrowMetadata GpuActivity<CUpti_ActivityKernel4>::getArrowMetadata() const {
+const ActivityExtraFields GpuActivity<CUpti_ActivityKernel4>::getExtraFields() const {
   const CUpti_ActivityKernel4& kernel = raw();
-  ActivityArrowMetadata arrowMetadata{};
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = kernel.streamId;
   arrowMetadata.correlation = kernel.correlationId;
   arrowMetadata.bytes = -1;
@@ -203,9 +203,9 @@ inline const std::string GpuActivity<CUpti_ActivityMemcpy>::metadataJson()
 }
 
 template <>
-const ActivityArrowMetadata GpuActivity<CUpti_ActivityMemcpy>::getArrowMetadata() const {
+const ActivityExtraFields GpuActivity<CUpti_ActivityMemcpy>::getExtraFields() const {
   const CUpti_ActivityMemcpy& memcpy = raw();
-  ActivityArrowMetadata arrowMetadata{};
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = memcpy.streamId;
   arrowMetadata.correlation = memcpy.correlationId;
   arrowMetadata.bytes = static_cast<int64_t>(memcpy.bytes);
@@ -244,9 +244,9 @@ inline const std::string GpuActivity<CUpti_ActivityMemcpy2>::metadataJson()
 }
 
 template <>
-const ActivityArrowMetadata GpuActivity<CUpti_ActivityMemcpy2>::getArrowMetadata() const {
+const ActivityExtraFields GpuActivity<CUpti_ActivityMemcpy2>::getExtraFields() const {
   const CUpti_ActivityMemcpy2& memcpy = raw();
-  ActivityArrowMetadata arrowMetadata{};
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = memcpy.streamId;
   arrowMetadata.correlation = memcpy.correlationId;
   arrowMetadata.bytes = static_cast<int64_t>(memcpy.bytes);
@@ -285,9 +285,9 @@ inline const std::string GpuActivity<CUpti_ActivityMemset>::metadataJson()
 }
 
 template <>
-const ActivityArrowMetadata GpuActivity<CUpti_ActivityMemset>::getArrowMetadata() const {
+const ActivityExtraFields GpuActivity<CUpti_ActivityMemset>::getExtraFields() const {
   const CUpti_ActivityMemset& memset = raw();
-  ActivityArrowMetadata arrowMetadata{};
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = memset.streamId;
   arrowMetadata.correlation = memset.correlationId;
   arrowMetadata.bytes = static_cast<int64_t>(memset.bytes);
@@ -318,8 +318,8 @@ inline const std::string OverheadActivity::metadataJson() const {
   return "";
 }
 
-const ActivityArrowMetadata OverheadActivity::getArrowMetadata() const {
-  ActivityArrowMetadata arrowMetadata{};
+const ActivityExtraFields OverheadActivity::getExtraFields() const {
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = -1;
   arrowMetadata.correlation = -1;
   arrowMetadata.bytes = -1;
@@ -358,8 +358,8 @@ inline const std::string RuntimeActivity::metadataJson() const {
       activity_.correlationId);
 }
 
-const ActivityArrowMetadata RuntimeActivity::getArrowMetadata() const {
-  ActivityArrowMetadata arrowMetadata{};
+const ActivityExtraFields RuntimeActivity::getExtraFields() const {
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = -1;
   arrowMetadata.correlation = activity_.correlationId;
   arrowMetadata.bytes = -1;
@@ -389,8 +389,8 @@ inline const std::string DriverActivity::metadataJson() const {
       activity_.correlationId);
 }
 
-const ActivityArrowMetadata DriverActivity::getArrowMetadata() const {
-  ActivityArrowMetadata arrowMetadata{};
+const ActivityExtraFields DriverActivity::getExtraFields() const {
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = -1;
   arrowMetadata.correlation = activity_.correlationId;
   arrowMetadata.bytes = -1;
@@ -421,8 +421,8 @@ inline const std::string GpuActivity<T>::metadataJson() const {
 }
 
 template <class T>
-const ActivityArrowMetadata GpuActivity<T>::getArrowMetadata() const {
-  ActivityArrowMetadata arrowMetadata{};
+const ActivityExtraFields GpuActivity<T>::getExtraFields() const {
+  ActivityExtraFields arrowMetadata{};
   arrowMetadata.stream = -1;
   arrowMetadata.correlation = -1;
   arrowMetadata.bytes = -1;

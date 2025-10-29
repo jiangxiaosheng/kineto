@@ -61,7 +61,7 @@ def get_libkineto_cpu_only_srcs(with_api = True):
         "src/init.cpp",
         "src/output_csv.cpp",
         "src/output_json.cpp",
-        "src/output_arrow.cpp",
+        "src/output_orca.cpp",
     ] + (get_libkineto_api_srcs() if with_api else [])
 
 def get_libkineto_public_headers():

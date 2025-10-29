@@ -124,7 +124,7 @@ class GenericTraceActivity : public ITraceActivity {
     return json.str();
   }
 
-  const ActivityArrowMetadata getArrowMetadata() const override {
+  const ActivityExtraFields getExtraFields() const override {
     return {
       .stream = -1,
       .correlation = id,

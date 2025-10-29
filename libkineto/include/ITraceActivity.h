@@ -20,7 +20,7 @@ struct TraceSpan;
 // These metadata cannot be directly retrieved via public methods, and they
 // are needed to build the arrow table for HTA, so we add this struct to hold
 // the relevant metadata and a new method to get it.
-struct ActivityArrowMetadata {
+struct ActivityExtraFields {
   int64_t stream;
   int64_t correlation;
   int64_t bytes;
@@ -66,7 +66,7 @@ struct ITraceActivity {
     return "";
   }
   // Return the required metadata for HTA
-  virtual const ActivityArrowMetadata getArrowMetadata() const = 0;
+  virtual const ActivityExtraFields getExtraFields() const = 0;
 
   static int64_t nsToUs(int64_t ns) {
     // It's important that this conversion is the same everywhere.

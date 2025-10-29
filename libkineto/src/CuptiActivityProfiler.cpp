@@ -9,6 +9,9 @@
 #include "CuptiActivityProfiler.h"
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+#include <mon_client/client_types.h>
+#include <mon_client/client_utils.h>
+#include <mon_client/mpi_client.h>
 #include <unistd.h>
 #include <atomic>
 #include <cstddef>
@@ -26,7 +29,6 @@
 #include "ApproximateClock.h"
 #include "ILoggerObserver.h"
 #include "libkineto.h"
-#include "output_arrow.h"
 
 #ifdef HAS_CUPTI
 #include <cupti.h>
@@ -53,7 +55,6 @@
 
 #include "Logger.h"
 #include "ThreadUtil.h"
-#include "output_arrow.h"
 #include "output_json.h"
 
 using namespace std::chrono;
@@ -233,6 +234,29 @@ CuptiActivityProfiler::CuptiActivityProfiler(
   if (isGpuAvailable()) {
     logGpuVersions();
   }
+  kinetoTracer_ = std::make_shared<KinetoTracer>(kKinetoSchema);
+
+  // The below env vars should have been exported from mpirun
+  const char* env_rank = getenv("RANK");
+  if (env_rank == nullptr) {
+    LOG(WARNING)
+        << "RANK environment variable not set, not initializing ORCA client";
+    return;
+  }
+  const char* env_nsize = getenv("WORLD_SIZE");
+  if (env_nsize == nullptr) {
+    LOG(WARNING)
+        << "WORLD_SIZE environment variable not set, not initializing ORCA client";
+    return;
+  }
+  rank_ = std::atoi(env_rank);
+  nsize_ = std::atoi(env_nsize);
+  mon::client::ClientUtils::MpiInit();
+
+  mon::client::InitOpts init_opts = {rank_, nsize_, 0, {kinetoTracer_}};
+  mpiClient_ = mon::client::MpiClient::GetInstance();
+  mpiClient_->Init(init_opts);
+  LOG(INFO) << "MPI client inited";
 }
 
 void CuptiActivityProfiler::logGpuVersions() {
@@ -1266,10 +1290,6 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
       if (warmup_done) {
         LOG(INFO) << "Warmup done, starting trace";
         startTraceOrca();
-
-        if (config_->useArrowLogger()) {
-          arrowStats_.start_time = libkineto::timeSinceEpoch(now);
-        }
       }
     } else if (currentRunloopState_ == RunloopState::ContinuousFlush) {
       LOG(INFO) << "Flush trace at iteration " << currentIter;
@@ -1280,30 +1300,6 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
       if (collection_done) {
         LOG(INFO) << "Flush trace done, stopping trace";
         stopTraceOrca();
-
-        if (config_->useArrowLogger()) {
-          arrowStats_.end_time = libkineto::timeSinceEpoch(now);
-          auto total_rows = std::accumulate(
-              arrowStats_.num_rows.begin(), arrowStats_.num_rows.end(), 0ull);
-          auto total_bytes = std::accumulate(
-              arrowStats_.bytes.begin(), arrowStats_.bytes.end(), 0ull);
-          auto total_duration =
-              static_cast<double>(
-                  arrowStats_.end_time - arrowStats_.start_time) /
-              1e9;
-          auto logging_duration = static_cast<double>(std::accumulate(
-                                      arrowStats_.logging_durations.begin(),
-                                      arrowStats_.logging_durations.end(),
-                                      0ull)) /
-              1e9;
-          LOG(INFO) << fmt::format(
-              "Arrow stats: end-to-end {:.2f} rows/s, {:.2f} bytes/s, "
-              "logging {:.2f} rows/s, {:.2f} bytes/s",
-              static_cast<double>(total_rows) / total_duration,
-              static_cast<double>(total_bytes) / total_duration,
-              static_cast<double>(total_rows) / logging_duration,
-              static_cast<double>(total_bytes) / logging_duration);
-        }
       }
     }
     return new_wakeup_time;
@@ -1459,6 +1455,9 @@ void CuptiActivityProfiler::startTraceOrca() {
   if (libkineto::api().client()) {
     libkineto::api().client()->start();
   }
+
+  
+
   // Init the thread pool.
   //
   // If the previous thread pool (if any) is still running, in its destructor
@@ -1499,6 +1498,12 @@ void CuptiActivityProfiler::stopTraceOrca() {
   // task finishes, otherwise kineto thread local state being destroyed
   // will likely cause segfault while preprocessing is still running.
   currentRunloopState_ = RunloopState::WaitForRequest;
+
+  // FIXME: Needs refactor
+  if (mpiClient_) {
+    mpiClient_->Destroy();
+    mon::client::ClientUtils::MpiFinalize();
+  }
 }
 
 #ifdef HAS_CUPTI
@@ -2131,52 +2136,54 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
   if (++iter_cnt % config_->flushInterval() != 0) {
     return;
   }
-  
+
   // the trace snapshot must be constructed before we pass it to the
   // processing thread
   LOG(INFO) << "Making trace snapshot for step " << currentIter;
   auto trace_snapshot = makeTraceSnapshot();
 
+  ActivityLogger* logger = nullptr;
+  if (flush_logger_ == nullptr && config_->useMonLogger()) {
+    flush_logger_ = std::make_shared<MonTraceLogger>(kinetoTracer_, rank_);
+  } else {
+    // normal json/csc/arrow logger for testing, not implemented yet
+  }
+
   bool is_last_step = currentIter == derivedConfig_->profileEndIteration();
-  auto process_task = [is_last_step](const std::shared_ptr<TraceSnapshot>& trace_snapshot,
-                         int64_t currentIter,
-                         ArrowStats* arrowStats) {
-    const auto& log_dir = trace_snapshot->config->activitiesLogFile();
+  flush_logger_->setTimestep(static_cast<int>(currentIter));
+  trace_snapshot->processTrace(*flush_logger_);
 
-    if (!std::filesystem::exists(log_dir)) {
-      std::filesystem::create_directories(log_dir);
+  if (is_last_step) {
+    if (libkineto::api().client()) {
+      libkineto::api().client()->shutdown();
+      LOG(INFO) << "Reached end of step " << currentIter
+                << ", shut down libkineto client";
     }
-    const char* rank = getenv("RANK");
-    std::string table_name;
-    if (!rank) {
-      table_name =
-          fmt::format("{}/{}_step_{}", log_dir, processId(), currentIter);
-    } else {
-      table_name =
-          fmt::format("{}/rank_{}_step_{}", log_dir, rank, currentIter);
-    }
-    std::unique_ptr<ActivityLogger> logger;
-    if (trace_snapshot->config->useArrowLogger()) {
-      table_name += ".parquet";
-      logger = std::unique_ptr<ActivityLogger>(new ArrowTraceLogger(table_name, arrowStats));
-      auto start_time = timeSinceEpoch(std::chrono::system_clock::now());
-      logger->setStartTime(start_time);
-    } else {
-      table_name += ".json";
-      logger = std::unique_ptr<ActivityLogger>(new ChromeTraceLogger(table_name));
-    }
-    LOG(INFO) << "Created arrow logger for step " << currentIter << " at "
-              << table_name;
-    
-    trace_snapshot->processTrace(*logger);
+  }
+  LOG(INFO) << "MPI client addr: " << mpiClient_.get() << ", bool: " << (mpiClient_? "true" : "false");
+  if (mpiClient_) {
+    mpiClient_->PostTimestepAdvance();
+    LOG(INFO) << "MPI client posting timestep advance";
+  }
 
-    if (is_last_step) {
-      if (libkineto::api().client()) {
-        libkineto::api().client()->shutdown();
-      }
-    }
-  };
-  threadPool_->enqueue(process_task, trace_snapshot, currentIter, &arrowStats_);
+  // Note: In the case of mon logger we can only have one worker thread, meaning
+  // the thread pool size must be 1. We actually don't need a thread pool at
+  // all. This piece of code should be refactored later.
+  // auto process_task = [is_last_step, this](
+  //                         const std::shared_ptr<TraceSnapshot>& trace_snapshot,
+  //                         int64_t currentIter) {
+  //   flush_logger_->setTimestep(static_cast<int>(currentIter));
+  //   trace_snapshot->processTrace(*flush_logger_);
+
+  //   if (is_last_step) {
+  //     if (libkineto::api().client()) {
+  //       libkineto::api().client()->shutdown();
+  //       LOG(INFO) << "Reached end of step " << currentIter
+  //                 << ", shut down libkineto client";
+  //     }
+  //   }
+  // };
+  // threadPool_->enqueue(process_task, trace_snapshot, currentIter);
 }
 
 void CuptiActivityProfiler::finalizeTrace(

@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <mon_client/client_types.h>
+#include <mon_client/client_utils.h>
 #include <atomic>
 #include <chrono>
 #include <deque>
@@ -23,7 +25,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include "output_arrow.h"
+#include "output_orca.h"
 
 // TODO(T90238193)
 // @lint-ignore-every CLANGTIDY facebook-hte-RelativeInclude
@@ -43,6 +45,7 @@
 #include "LoggerCollector.h"
 #include "ThreadUtil.h"
 #include "TraceSpan.h"
+#include "kineto_tracer.h"
 #include "libkineto.h"
 #include "output_base.h"
 
@@ -718,6 +721,10 @@ class CuptiActivityProfiler {
 
   // Logger used during trace processing
   ActivityLogger* logger_;
+  // In flush mode it could be the case where we need a unique logger
+  // in each iteration.
+  // Keep it as separate to avoid messing up the use of logger_
+  std::shared_ptr<ActivityLogger> flush_logger_;
 
   // Calls to CUPTI is encapsulated behind this interface
 #ifdef HAS_ROCTRACER
@@ -817,7 +824,15 @@ class CuptiActivityProfiler {
 
   ErrorCounts ecs_;
 
-  ArrowStats arrowStats_;
+  KinetoTracerRef kinetoTracer_;
+
+  mon::client::MpiClientRef mpiClient_{nullptr};
+
+  constexpr static const char* kKinetoSchema = "kineto";
+
+  // Distributed pytorch rank and size, used for orca kineto tracer
+  int rank_;
+  int nsize_;
 
   // LoggerCollector to collect all LOGs during the trace
 #if !USE_GOOGLE_LOG

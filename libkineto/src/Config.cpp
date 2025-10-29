@@ -96,7 +96,7 @@ constexpr char kProfileWithModules[] = "PROFILE_WITH_MODULES";
 constexpr char kEnableContinuousFlushKey[] = "PROFILE_CONTINUOUS_FLUSH";
 constexpr char kThreadPoolSizeKey[] = "PROFILE_THREAD_POOL_SIZE";
 constexpr char kFlushIntervalKey[] = "PROFILE_FLUSH_INTERVAL";
-constexpr char kUseArrowLoggerKey[] = "PROFILE_USE_ARROW_LOGGER";
+constexpr char kUseMonLoggerKey[] = "PROFILE_USE_MON_LOGGER";
 
 constexpr char kActivitiesWarmupIterationsKey[] =
     "ACTIVITIES_WARMUP_ITERATIONS";
@@ -448,8 +448,8 @@ bool Config::handleOption(const std::string& name, std::string& val) {
     threadPoolSize_ = toInt32(val);
   } else if (!name.compare(kFlushIntervalKey)) {
     flushInterval_ = toInt32(val);
-  } else if (!name.compare(kUseArrowLoggerKey)) {
-    useArrowLogger_ = toBool(val);
+  } else if (!name.compare(kUseMonLoggerKey)) {
+    useMonLogger_ = toBool(val);
   }
 
   // Common
@@ -549,10 +549,10 @@ void Config::validate(
     }
   }
 
-  if (useArrowLogger_ && !enableContinuousFlush_) {
+  if (useMonLogger_ && !enableContinuousFlush_) {
     LOG(WARNING)
-        << "Arrow logger must be used with continuous flush. Fall back to Chrome logger.";
-    useArrowLogger_ = false;
+        << "Mon logger must be used with continuous flush. Fall back to Chrome logger.";
+    useMonLogger_ = false;
   }
 
   if (!hasProfileStartTime()) {

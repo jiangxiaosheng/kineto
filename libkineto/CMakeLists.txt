@@ -238,8 +238,11 @@ message(INFO " IPCFABRIC_INCLUDE_DIR = ${IPCFABRIC_INCLUDE_DIR}")
 add_subdirectory("${IPCFABRIC_INCLUDE_DIR}")
 target_link_libraries(kineto_base PRIVATE dynolog_ipcfabric_lib)
 
+# TODO: see if arrow and parquet are required anymore
+# as we bring in orca client here
 find_package(Arrow REQUIRED)
 find_package(Parquet REQUIRED)
+find_package(orca REQUIRED)
 
 target_include_directories(kineto_base PUBLIC
       $<BUILD_INTERFACE:${LIBKINETO_INCLUDE_DIR}>
@@ -247,6 +250,7 @@ target_include_directories(kineto_base PUBLIC
       $<BUILD_INTERFACE:${DYNOLOG_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${FMT_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${ARROW_INCLUDE_DIR}>
+      $<BUILD_INTERFACE:${ORCA_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${IPCFABRIC_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${CUPTI_INCLUDE_DIR}>
       $<BUILD_INTERFACE:${CUDA_INCLUDE_DIRS}>
@@ -281,7 +285,7 @@ else()
   message(FATAL_ERROR "Unsupported library type ${KINETO_LIBRARY_TYPE}")
 endif()
 
-target_link_libraries(kineto Arrow::arrow_shared Parquet::parquet_shared)
+target_link_libraries(kineto Arrow::arrow_shared Parquet::parquet_shared orca::client)
 
 if(NOT LIBKINETO_NOROCTRACER)
   find_library(ROCTRACER_LIBRARY NAMES libroctracer64.so HINTS

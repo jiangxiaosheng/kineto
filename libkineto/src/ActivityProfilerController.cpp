@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <functional>
+#include <memory>
 #include <thread>
 
 #include "ActivityLoggerFactory.h"
@@ -23,6 +24,7 @@
 #include "ThreadUtil.h"
 #include "output_json.h"
 #include "output_membuf.h"
+#include "output_orca.h"
 
 #include "Logger.h"
 
@@ -41,8 +43,8 @@ void ActivityProfilerController::setLoggerCollectorFactory(
   loggerCollectorFactory() = factory();
 }
 
-std::shared_ptr<LoggerCollector>
-ActivityProfilerController::getLoggerCollector() {
+std::shared_ptr<LoggerCollector> ActivityProfilerController::
+    getLoggerCollector() {
   return loggerCollectorFactory();
 }
 #endif // !USE_GOOGLE_LOG
@@ -340,8 +342,8 @@ void ActivityProfilerController::startTrace() {
   profiler_->startTrace(std::chrono::system_clock::now());
 }
 
-std::unique_ptr<ActivityTraceInterface>
-ActivityProfilerController::stopTrace() {
+std::unique_ptr<ActivityTraceInterface> ActivityProfilerController::
+    stopTrace() {
   profiler_->stopTrace(std::chrono::system_clock::now());
   UST_LOGGER_MARK_COMPLETED(kCollectionStage);
   auto logger = std::make_unique<MemoryTraceLogger>(profiler_->config());

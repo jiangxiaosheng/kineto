@@ -213,7 +213,7 @@ public:
 
   int threadPoolSize() const { return threadPoolSize_; }
 
-  bool useArrowLogger() const { return useArrowLogger_; }
+  bool useMonLogger() const { return useMonLogger_; }
 
   bool hasProfileStartTime() const {
     return requestTimestamp_.time_since_epoch().count() > 0 ||
@@ -466,7 +466,7 @@ private:
   // for continuous flush.
   int flushInterval_{1};
 
-  bool useArrowLogger_{false};
+  bool useMonLogger_{false};
 };
 
 constexpr char kUseDaemonEnvVar[] = "KINETO_USE_DAEMON";
