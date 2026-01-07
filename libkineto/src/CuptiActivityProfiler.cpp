@@ -252,11 +252,6 @@ CuptiActivityProfiler::CuptiActivityProfiler(
   rank_ = std::atoi(env_rank);
   nsize_ = std::atoi(env_nsize);
   mon::client::ClientUtils::MpiInit();
-
-  mon::client::InitOpts init_opts = {rank_, nsize_, 0, {kinetoTracer_}};
-  mpiClient_ = mon::client::MpiClient::GetInstance();
-  mpiClient_->Init(init_opts);
-  LOG(INFO) << "MPI client inited";
 }
 
 void CuptiActivityProfiler::logGpuVersions() {
@@ -1032,16 +1027,6 @@ void CuptiActivityProfiler::configure(
     return;
   }
 
-  // Currently continuous flush mode is not supported with child profilers.
-  // It's not for technical reasons, just because normally there are no child
-  // profilers and to integrate it needs some effort.
-  if (config.continuousFlushEnabled() && profilers_.size() > 0) {
-    LOG(WARNING)
-        << "Continuous flush mode is not supported with child profilers, "
-        << "terminating";
-    return;
-  }
-
   config_ = config.clone();
 
   // Ensure we're starting in a clean state
@@ -1272,7 +1257,7 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
   VLOG_IF(1, currentIter >= 0)
       << "Run loop on application step(), iteration = " << currentIter;
 
-  if (config_->continuousFlushEnabled()) {
+  if (config_->withOrca()) {
     // If currentIter < 0, it's called from the long-running profiler thread
     // not from step(), so just return here.
     if (currentIter < 0) {
@@ -1456,18 +1441,12 @@ void CuptiActivityProfiler::startTraceOrca() {
     libkineto::api().client()->start();
   }
 
-  
+  mon::client::InitOpts init_opts = {
+      rank_, nsize_, current_timestep_, {kinetoTracer_}};
+  mpiClient_ = mon::client::MpiClient::GetInstance();
+  mpiClient_->Init(init_opts);
+  LOG(INFO) << "MPI client inited";
 
-  // Init the thread pool.
-  //
-  // If the previous thread pool (if any) is still running, in its destructor
-  // it will wait for all the tasks to be finished before we start this new
-  // profiling round. Though in most cases we only do one profiling round
-  // in the pytorch program.
-  // This way we don't need to wait for threads to finish in stopTraceOrca()
-  // as that will be done when the pytorch program exits anyways, and it's
-  // helpful to avoid a huge tail latency in the step when the profiler stops.
-  threadPool_ = std::make_unique<ThreadPool>(config_->threadPoolSize());
   currentRunloopState_ = RunloopState::ContinuousFlush;
 }
 
@@ -1502,7 +1481,9 @@ void CuptiActivityProfiler::stopTraceOrca() {
   // FIXME: Needs refactor
   if (mpiClient_) {
     mpiClient_->Destroy();
+    LOG(INFO) << "MPI client destroyed";
     mon::client::ClientUtils::MpiFinalize();
+    mpiClient_ = nullptr;
   }
 }
 
@@ -2132,21 +2113,14 @@ std::shared_ptr<CuptiActivityProfiler::TraceSnapshot> CuptiActivityProfiler::
 }
 
 void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
-  static size_t iter_cnt = 0;
-  if (++iter_cnt % config_->flushInterval() != 0) {
-    return;
-  }
-
   // the trace snapshot must be constructed before we pass it to the
   // processing thread
   LOG(INFO) << "Making trace snapshot for step " << currentIter;
   auto trace_snapshot = makeTraceSnapshot();
 
   ActivityLogger* logger = nullptr;
-  if (flush_logger_ == nullptr && config_->useMonLogger()) {
+  if (flush_logger_ == nullptr && config_->withOrca()) {
     flush_logger_ = std::make_shared<MonTraceLogger>(kinetoTracer_, rank_);
-  } else {
-    // normal json/csc/arrow logger for testing, not implemented yet
   }
 
   bool is_last_step = currentIter == derivedConfig_->profileEndIteration();
@@ -2160,30 +2134,12 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
                 << ", shut down libkineto client";
     }
   }
-  LOG(INFO) << "MPI client addr: " << mpiClient_.get() << ", bool: " << (mpiClient_? "true" : "false");
+  LOG(INFO) << "MPI client addr: " << mpiClient_.get()
+            << ", bool: " << (mpiClient_ ? "true" : "false");
   if (mpiClient_) {
     mpiClient_->PostTimestepAdvance();
     LOG(INFO) << "MPI client posting timestep advance";
   }
-
-  // Note: In the case of mon logger we can only have one worker thread, meaning
-  // the thread pool size must be 1. We actually don't need a thread pool at
-  // all. This piece of code should be refactored later.
-  // auto process_task = [is_last_step, this](
-  //                         const std::shared_ptr<TraceSnapshot>& trace_snapshot,
-  //                         int64_t currentIter) {
-  //   flush_logger_->setTimestep(static_cast<int>(currentIter));
-  //   trace_snapshot->processTrace(*flush_logger_);
-
-  //   if (is_last_step) {
-  //     if (libkineto::api().client()) {
-  //       libkineto::api().client()->shutdown();
-  //       LOG(INFO) << "Reached end of step " << currentIter
-  //                 << ", shut down libkineto client";
-  //     }
-  //   }
-  // };
-  // threadPool_->enqueue(process_task, trace_snapshot, currentIter);
 }
 
 void CuptiActivityProfiler::finalizeTrace(

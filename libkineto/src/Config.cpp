@@ -93,8 +93,7 @@ constexpr char kProfileProfileMemory[] = "PROFILE_PROFILE_MEMORY";
 constexpr char kProfileWithStack[] = "PROFILE_WITH_STACK";
 constexpr char kProfileWithFlops[] = "PROFILE_WITH_FLOPS";
 constexpr char kProfileWithModules[] = "PROFILE_WITH_MODULES";
-constexpr char kEnableContinuousFlushKey[] = "PROFILE_CONTINUOUS_FLUSH";
-constexpr char kThreadPoolSizeKey[] = "PROFILE_THREAD_POOL_SIZE";
+constexpr char kProfileWithOrca[] = "PROFILE_WITH_ORCA";
 constexpr char kFlushIntervalKey[] = "PROFILE_FLUSH_INTERVAL";
 constexpr char kUseMonLoggerKey[] = "PROFILE_USE_MON_LOGGER";
 
@@ -442,14 +441,8 @@ bool Config::handleOption(const std::string& name, std::string& val) {
     enableWithFlops_ = toBool(val);
   } else if (!name.compare(kProfileWithModules)) {
     enableWithModules_ = toBool(val);
-  } else if (!name.compare(kEnableContinuousFlushKey)) {
-    enableContinuousFlush_ = toBool(val);
-  } else if (!name.compare(kThreadPoolSizeKey)) {
-    threadPoolSize_ = toInt32(val);
-  } else if (!name.compare(kFlushIntervalKey)) {
-    flushInterval_ = toInt32(val);
-  } else if (!name.compare(kUseMonLoggerKey)) {
-    useMonLogger_ = toBool(val);
+  } else if (!name.compare(kProfileWithOrca)) {
+    withOrca_ = toBool(val);
   }
 
   // Common
@@ -533,28 +526,6 @@ void Config::validate(
     samplesPerReport_ = max_samples_per_report;
   }
 
-  if (!enableContinuousFlush_ && (threadPoolSize_ > 1 || flushInterval_ > 1)) {
-    LOG(WARNING)
-        << "Continuous flush is not enabled, but thread pool size or flush interval steps is set. "
-        << "Setting thread pool size to 1 and flush interval steps to 1.";
-    threadPoolSize_ = 1;
-    flushInterval_ = 1;
-  }
-
-  if (enableContinuousFlush_ && threadPoolSize_ > 1) {
-    int core_count = std::thread::hardware_concurrency();
-    if (threadPoolSize_ > core_count) {
-      LOG(WARNING) << "Thread pool size is greater than the number of cores. "
-                   << "This may cause performance degradation.";
-    }
-  }
-
-  if (useMonLogger_ && !enableContinuousFlush_) {
-    LOG(WARNING)
-        << "Mon logger must be used with continuous flush. Fall back to Chrome logger.";
-    useMonLogger_ = false;
-  }
-
   if (!hasProfileStartTime()) {
     VLOG(0)
         << "No explicit timestamp has been set. "
@@ -608,12 +579,8 @@ void Config::printActivityProfilerConfig(std::ostream& s) const {
       << std::endl;
   }
 
-  s << "  Continuous flush: " << (continuousFlushEnabled() ? "true" : "false")
+  s << "  With Orca: " << (withOrca() ? "true" : "false")
     << std::endl;
-  if (continuousFlushEnabled()) {
-    s << "  Thread pool size: " << threadPoolSize() << std::endl;
-    s << "  Flush interval steps: " << flushInterval() << std::endl;
-  }
 
   s << "  Max GPU buffer size: " << activitiesMaxGpuBufferSize() / 1024 / 1024
     << "MB" << std::endl;

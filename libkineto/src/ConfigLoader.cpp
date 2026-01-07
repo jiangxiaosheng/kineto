@@ -12,11 +12,11 @@
 #include <signal.h>
 #endif
 
-#include <stdlib.h>
 #include <chrono>
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <stdlib.h>
 
 #include "DaemonConfigLoader.h"
 
@@ -27,6 +27,8 @@ using namespace std::chrono;
 namespace KINETO_NAMESPACE {
 
 constexpr char kConfigFileEnvVar[] = "KINETO_CONFIG";
+// Bootstrap config string used by ORCA client for benchmarking.
+constexpr char kOrcaKinetoConf[] = "ORCA_KINETO_CONF";
 #ifdef __linux__
 constexpr char kConfigFile[] = "/etc/libkineto.conf";
 constexpr char kOnDemandConfigFile[] = "/tmp/libkineto.conf";
@@ -34,6 +36,16 @@ constexpr char kOnDemandConfigFile[] = "/tmp/libkineto.conf";
 constexpr char kConfigFile[] = "libkineto.conf";
 constexpr char kOnDemandConfigFile[] = "libkineto.conf";
 #endif
+
+namespace {
+std::string getBootstrapConfigFile() {
+  const char *bootstrapConfFile = getenv(kOrcaKinetoConf);
+  if (bootstrapConfFile == nullptr) {
+    return "";
+  }
+  return bootstrapConfFile;
+}
+} // namespace
 
 constexpr std::chrono::seconds kConfigUpdateIntervalSecs(300);
 
@@ -48,7 +60,7 @@ static struct sigaction originalUsr2Handler = {};
 static bool hasOriginalSignalHandler() {
 #ifdef __linux__
   return originalUsr2Handler.sa_handler != nullptr ||
-      originalUsr2Handler.sa_sigaction != nullptr;
+         originalUsr2Handler.sa_sigaction != nullptr;
 #else
   return false;
 #endif
@@ -89,16 +101,15 @@ static void setupSignalHandler(bool enableSigUsr2) {
 }
 
 // return an empty string if reading gets any errors. Otherwise a config string.
-static std::string readConfigFromConfigFile(
-    const char* filename,
-    bool verbose = true) {
+static std::string readConfigFromConfigFile(const char *filename,
+                                            bool verbose = true) {
   // Read whole file into a string.
   std::ifstream file(filename);
   std::string conf;
   try {
-    conf.assign(
-        std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-  } catch (std::exception& e) {
+    conf.assign(std::istreambuf_iterator<char>(file),
+                std::istreambuf_iterator<char>());
+  } catch (std::exception &e) {
     if (verbose) {
       VLOG(0) << "Error reading " << filename << ": " << e.what();
     }
@@ -108,7 +119,7 @@ static std::string readConfigFromConfigFile(
   return conf;
 }
 
-static std::function<std::unique_ptr<IDaemonConfigLoader>()>&
+static std::function<std::unique_ptr<IDaemonConfigLoader>()> &
 daemonConfigLoaderFactory() {
   static std::function<std::unique_ptr<IDaemonConfigLoader>()> factory =
       nullptr;
@@ -120,14 +131,14 @@ void ConfigLoader::setDaemonConfigLoaderFactory(
   daemonConfigLoaderFactory() = factory;
 }
 
-ConfigLoader& ConfigLoader::instance() {
+ConfigLoader &ConfigLoader::instance() {
   static ConfigLoader config_loader;
   return config_loader;
 }
 
 // return an empty string if polling gets any errors. Otherwise a config string.
-std::string ConfigLoader::readOnDemandConfigFromDaemon(
-    time_point<system_clock> now) {
+std::string
+ConfigLoader::readOnDemandConfigFromDaemon(time_point<system_clock> now) {
   if (!daemonConfigLoader_) {
     return "";
   }
@@ -149,8 +160,7 @@ ConfigLoader::ConfigLoader()
       // on-demand config will be overwritten by the value read from the regular
       // config so the initial value is not important
       onDemandConfigUpdateIntervalSecs_(kConfigUpdateIntervalSecs),
-      stopFlag_(false),
-      onDemandSignal_(false) {}
+      stopFlag_(false), onDemandSignal_(false) {}
 
 void ConfigLoader::startThread() {
   if (!updateThread_) {
@@ -159,6 +169,28 @@ void ConfigLoader::startThread() {
     std::lock_guard<std::mutex> lock(configLock_);
     if (!config_) {
       config_ = std::make_unique<Config>();
+      std::string bootstrapConfFile = getBootstrapConfigFile();
+      if (!bootstrapConfFile.empty()) {
+        std::ifstream file(bootstrapConfFile);
+        if (!file) {
+          LOG(ERROR) << "Failed to open bootstrap config file: "
+                     << bootstrapConfFile;
+          return;
+        }
+        std::string conf_str((std::istreambuf_iterator<char>(file)),
+                             (std::istreambuf_iterator<char>()));
+        LOG(INFO) << "Using bootstrap config: " << conf_str;
+        config_->parse(conf_str);
+        config_->setBootstrap();
+        SET_LOG_VERBOSITY_LEVEL(config_->verboseLogLevel(),
+                                config_->verboseLogModules());
+        for (auto &key_val : handlers_) {
+          for (ConfigHandler *handler : key_val.second) {
+            handler->acceptConfig(*config_);
+          }
+        }
+        return;
+      }
     }
     updateThread_ =
         std::make_unique<std::thread>(&ConfigLoader::updateConfigThread, this);
@@ -196,9 +228,9 @@ void ConfigLoader::handleOnDemandSignal() {
 
 namespace {
 
-const char* configFileName() {
-  static const char* configFileName__ = []() {
-    const char* configFileName_ = getenv(kConfigFileEnvVar);
+const char *configFileName() {
+  static const char *configFileName__ = []() {
+    const char *configFileName_ = getenv(kConfigFileEnvVar);
     if (configFileName_ == nullptr) {
       configFileName_ = kConfigFile;
     }
@@ -209,7 +241,7 @@ const char* configFileName() {
 
 } // namespace
 
-IDaemonConfigLoader* ConfigLoader::daemonConfigLoader() {
+IDaemonConfigLoader *ConfigLoader::daemonConfigLoader() {
   if (!daemonConfigLoader_ && daemonConfigLoaderFactory()) {
     daemonConfigLoader_ = daemonConfigLoaderFactory()();
     daemonConfigLoader_->setCommunicationFabric(config_->ipcFabricEnabled());
@@ -217,7 +249,7 @@ IDaemonConfigLoader* ConfigLoader::daemonConfigLoader() {
   return daemonConfigLoader_.get();
 }
 
-const char* ConfigLoader::customConfigFileName() {
+const char *ConfigLoader::customConfigFileName() {
   return getenv(kConfigFileEnvVar);
 }
 
@@ -243,17 +275,16 @@ void ConfigLoader::updateBaseConfig() {
       daemonConfigLoader()->setCommunicationFabric(config_->ipcFabricEnabled());
     }
     setupSignalHandler(config_->sigUsr2Enabled());
-    SET_LOG_VERBOSITY_LEVEL(
-        config_->verboseLogLevel(), config_->verboseLogModules());
+    SET_LOG_VERBOSITY_LEVEL(config_->verboseLogLevel(),
+                            config_->verboseLogModules());
     VLOG(0) << "Detected base config change";
   }
 }
 
-void ConfigLoader::configureFromSignal(
-    time_point<system_clock> now,
-    Config& config) {
-  LOG(INFO) << "Received on-demand profiling signal, " << "reading config from "
-            << kOnDemandConfigFile;
+void ConfigLoader::configureFromSignal(time_point<system_clock> now,
+                                       Config &config) {
+  LOG(INFO) << "Received on-demand profiling signal, "
+            << "reading config from " << kOnDemandConfigFile;
   // Reset start time to 0 in order to compute new default start time
   const std::string config_str =
       "PROFILE_START_TIME=0\n" + readConfigFromConfigFile(kOnDemandConfigFile);
@@ -262,9 +293,8 @@ void ConfigLoader::configureFromSignal(
   notifyHandlers(config);
 }
 
-void ConfigLoader::configureFromDaemon(
-    time_point<system_clock> now,
-    Config& config) {
+void ConfigLoader::configureFromDaemon(time_point<system_clock> now,
+                                       Config &config) {
   const std::string config_str = readOnDemandConfigFromDaemon(now);
   if (config_str.empty()) {
     return;
@@ -298,9 +328,8 @@ void ConfigLoader::updateConfigThread() {
   // the destructor to wake it to avoid a 5-minute long destruct period.
   for (;;) {
     auto interval =
-        std::min(
-            configUpdateIntervalSecs_ + prev_config_load_time,
-            onDemandConfigUpdateIntervalSecs_ + prev_on_demand_load_time) -
+        std::min(configUpdateIntervalSecs_ + prev_config_load_time,
+                 onDemandConfigUpdateIntervalSecs_ + prev_on_demand_load_time) -
         system_clock::now();
     if (interval.count() > 0) {
       std::unique_lock<std::mutex> lock(updateThreadMutex_);
@@ -319,8 +348,8 @@ void ConfigLoader::updateConfigThread() {
     if (onDemandSignal_.exchange(false)) {
       onDemandConfig = config_->clone();
       configureFromSignal(now, *onDemandConfig);
-    } else if (
-        now > prev_on_demand_load_time + onDemandConfigUpdateIntervalSecs_) {
+    } else if (now >
+               prev_on_demand_load_time + onDemandConfigUpdateIntervalSecs_) {
       onDemandConfig = std::make_unique<Config>();
       configureFromDaemon(now, *onDemandConfig);
       prev_on_demand_load_time = now;
@@ -329,14 +358,13 @@ void ConfigLoader::updateConfigThread() {
       LOG(INFO) << "Setting verbose level to "
                 << onDemandConfig->verboseLogLevel()
                 << " from on-demand config";
-      SET_LOG_VERBOSITY_LEVEL(
-          onDemandConfig->verboseLogLevel(),
-          onDemandConfig->verboseLogModules());
+      SET_LOG_VERBOSITY_LEVEL(onDemandConfig->verboseLogLevel(),
+                              onDemandConfig->verboseLogModules());
     }
   }
 }
 
-bool ConfigLoader::hasNewConfig(const Config& oldConfig) {
+bool ConfigLoader::hasNewConfig(const Config &oldConfig) {
   std::lock_guard<std::mutex> lock(configLock_);
   return config_->timestamp() > oldConfig.timestamp();
 }

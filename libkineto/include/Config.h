@@ -46,6 +46,9 @@ public:
            activitiesOnDemandTimestamp_.time_since_epoch().count() > 0;
   }
 
+  void setBootstrap() { isBootstrap_ = true; }
+  bool isBootstrap() const { return isBootstrap_; }
+
   // Log activitiy trace to this file
   const std::string &activitiesLogFile() const { return activitiesLogFile_; }
 
@@ -207,13 +210,7 @@ public:
     return requestTimestamp_ + maxRequestAge() + activitiesWarmupDuration();
   }
 
-  bool continuousFlushEnabled() const { return enableContinuousFlush_; }
-
-  int flushInterval() const { return flushInterval_; }
-
-  int threadPoolSize() const { return threadPoolSize_; }
-
-  bool useMonLogger() const { return useMonLogger_; }
+  bool withOrca() const { return withOrca_; }
 
   bool hasProfileStartTime() const {
     return requestTimestamp_.time_since_epoch().count() > 0 ||
@@ -351,6 +348,8 @@ private:
     }
   }
 
+  bool isBootstrap_{false};
+
   int verboseLogLevel_;
   std::vector<std::string> verboseLogModules_;
 
@@ -456,17 +455,7 @@ private:
 
   // Below are the new config options for orca mode
 
-  // Enable continuous flush
-  bool enableContinuousFlush_{false};
-
-  // Thread pool size for continuous flush
-  int threadPoolSize_{1};
-
-  // Knob for controlling the interval in terms of number of iterations
-  // for continuous flush.
-  int flushInterval_{1};
-
-  bool useMonLogger_{false};
+  bool withOrca_{false};
 };
 
 constexpr char kUseDaemonEnvVar[] = "KINETO_USE_DAEMON";

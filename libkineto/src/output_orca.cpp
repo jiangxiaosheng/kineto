@@ -127,37 +127,6 @@ void MonTraceLogger::finalizeTrace(
     std::unique_ptr<ActivityBuffers> buffers,
     int64_t endTime,
     std::unordered_map<std::string, std::vector<std::string>>& metadata) {
-  // auto rb = buildArrowTable().ValueOrDie();
-  // int64_t ipcsz = 0;
-  // auto szstatus = arrow::ipc::GetRecordBatchSize(*rb, &ipcsz);
-  // if (!szstatus.ok()) {
-  //   LOG(ERROR) << "Failed to get record batch size";
-  //   return;
-  // }
-  // {
-  //   std::lock_guard guard(arrowStats_->rw_mutex);
-  //   arrowStats_->num_rows.push_back(rb->num_rows());
-  //   arrowStats_->bytes.push_back(ipcsz);
-  //   arrowStats_->logging_durations.push_back(
-  //       timeSinceEpoch(std::chrono::system_clock::now()) - startTime_);
-  // }
-  // // FIXME: Write to parquet just for testing. Should send out this arrow
-  // table
-  // // via RPC.
-  // std::shared_ptr<arrow::io::FileOutputStream> outfile;
-  // outfile = arrow::io::FileOutputStream::Open(arrowTableName_).ValueOrDie();
-  // auto arrow_writer = parquet::arrow::FileWriter::Open(
-  //                         *schema_, arrow::default_memory_pool(), outfile)
-  //                         .ValueOrDie();
-  // auto status = arrow_writer->WriteRecordBatch(*rb);
-  // if (!status.ok()) {
-  //   LOG(ERROR) << "Failed to write record batch";
-  // }
-
-  // status = arrow_writer->Close();
-  // if (!status.ok()) {
-  //   LOG(ERROR) << "Failed to close arrow writer";
-  // }
 }
 
 } // namespace KINETO_NAMESPACE

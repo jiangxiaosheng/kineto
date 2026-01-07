@@ -738,7 +738,6 @@ class CuptiActivityProfiler {
     Warmup,
     CollectTrace,
     ProcessTrace,
-    // Flush traces every K iterations without stopping
     ContinuousFlush,
   };
 
@@ -833,6 +832,7 @@ class CuptiActivityProfiler {
   // Distributed pytorch rank and size, used for orca kineto tracer
   int rank_;
   int nsize_;
+  int current_timestep_{0};
 
   // LoggerCollector to collect all LOGs during the trace
 #if !USE_GOOGLE_LOG

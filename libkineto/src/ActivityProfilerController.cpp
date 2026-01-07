@@ -33,7 +33,7 @@ using namespace std::chrono;
 namespace KINETO_NAMESPACE {
 
 #if !USE_GOOGLE_LOG
-static std::shared_ptr<LoggerCollector>& loggerCollectorFactory() {
+static std::shared_ptr<LoggerCollector> &loggerCollectorFactory() {
   static std::shared_ptr<LoggerCollector> factory = nullptr;
   return factory;
 }
@@ -43,15 +43,14 @@ void ActivityProfilerController::setLoggerCollectorFactory(
   loggerCollectorFactory() = factory();
 }
 
-std::shared_ptr<LoggerCollector> ActivityProfilerController::
-    getLoggerCollector() {
+std::shared_ptr<LoggerCollector>
+ActivityProfilerController::getLoggerCollector() {
   return loggerCollectorFactory();
 }
 #endif // !USE_GOOGLE_LOG
 
 ActivityProfilerController::ActivityProfilerController(
-    ConfigLoader& configLoader,
-    bool cpuOnly)
+    ConfigLoader &configLoader, bool cpuOnly)
     : configLoader_(configLoader) {
   // Initialize ChromeTraceBaseTime first of all.
   ChromeTraceBaseTime::singleton().init();
@@ -96,39 +95,38 @@ ActivityProfilerController::~ActivityProfilerController() {
 
 static ActivityLoggerFactory initLoggerFactory() {
   ActivityLoggerFactory factory;
-  factory.addProtocol("file", [](const std::string& url) {
+  factory.addProtocol("file", [](const std::string &url) {
     return std::unique_ptr<ActivityLogger>(new ChromeTraceLogger(url));
   });
   return factory;
 }
 
-static ActivityLoggerFactory& loggerFactory() {
+static ActivityLoggerFactory &loggerFactory() {
   static ActivityLoggerFactory factory = initLoggerFactory();
   return factory;
 }
 
 void ActivityProfilerController::addLoggerFactory(
-    const std::string& protocol,
-    ActivityLoggerFactory::FactoryFunc factory) {
+    const std::string &protocol, ActivityLoggerFactory::FactoryFunc factory) {
   loggerFactory().addProtocol(protocol, factory);
 }
 
-static std::unique_ptr<ActivityLogger> makeLogger(const Config& config) {
+static std::unique_ptr<ActivityLogger> makeLogger(const Config &config) {
   if (config.activitiesLogToMemory()) {
     return std::make_unique<MemoryTraceLogger>(config);
   }
   return loggerFactory().makeLogger(config.activitiesLogUrl());
 }
 
-static std::unique_ptr<InvariantViolationsLogger>&
+static std::unique_ptr<InvariantViolationsLogger> &
 invariantViolationsLoggerFactory() {
   static std::unique_ptr<InvariantViolationsLogger> factory = nullptr;
   return factory;
 }
 
 void ActivityProfilerController::setInvariantViolationsLoggerFactory(
-    const std::function<std::unique_ptr<InvariantViolationsLogger>()>&
-        factory) {
+    const std::function<std::unique_ptr<InvariantViolationsLogger>()>
+        &factory) {
   invariantViolationsLoggerFactory() = factory();
 }
 
@@ -136,7 +134,7 @@ bool ActivityProfilerController::canAcceptConfig() {
   return !profiler_->isActive();
 }
 
-void ActivityProfilerController::acceptConfig(const Config& config) {
+void ActivityProfilerController::acceptConfig(const Config &config) {
   VLOG(1) << "acceptConfig";
   if (config.activityProfilerEnabled()) {
     scheduleTrace(config);
@@ -144,7 +142,7 @@ void ActivityProfilerController::acceptConfig(const Config& config) {
 }
 
 bool ActivityProfilerController::shouldActivateTimestampConfig(
-    const std::chrono::time_point<std::chrono::system_clock>& now) {
+    const std::chrono::time_point<std::chrono::system_clock> &now) {
   if (asyncRequestConfig_->hasProfileStartIteration()) {
     return false;
   }
@@ -271,9 +269,7 @@ void ActivityProfilerController::step() {
 // This function should only be called when holding the configLock_.
 void ActivityProfilerController::activateConfig(
     std::chrono::time_point<std::chrono::system_clock> now) {
-  // With ORCA we will create a new logger for each step, so no need to set the
-  // logger here.
-  if (!asyncRequestConfig_->continuousFlushEnabled()) {
+  if (!asyncRequestConfig_->withOrca()) {
     logger_ = makeLogger(*asyncRequestConfig_);
     profiler_->setLogger(logger_.get());
   }
@@ -282,14 +278,15 @@ void ActivityProfilerController::activateConfig(
   asyncRequestConfig_ = nullptr;
 }
 
-void ActivityProfilerController::scheduleTrace(const Config& config) {
+void ActivityProfilerController::scheduleTrace(const Config &config) {
   VLOG(1) << "scheduleTrace";
   if (profiler_->isActive()) {
     LOG(WARNING) << "Ignored request - profiler busy";
     return;
   }
   int64_t currentIter = iterationCount_;
-  if (config.hasProfileStartIteration() && currentIter < 0) {
+  if (config.hasProfileStartIteration() && currentIter < 0 &&
+      !config.isBootstrap()) {
     LOG(WARNING) << "Ignored profile iteration count based request as "
                  << "application is not updating iteration count";
     return;
@@ -308,6 +305,12 @@ void ActivityProfilerController::scheduleTrace(const Config& config) {
     return;
   }
 
+  if (config.withOrca() && config.isBootstrap()) {
+    LOG(INFO) << "Activating ORCA bootstrap config";
+    profiler_->configure(config, system_clock::now());
+    asyncRequestConfig_ = nullptr;
+  }
+
   // start a profilerLoop() thread to handle request
   if (!profilerThread_) {
     profilerThread_ =
@@ -315,7 +318,7 @@ void ActivityProfilerController::scheduleTrace(const Config& config) {
   }
 }
 
-void ActivityProfilerController::prepareTrace(const Config& config) {
+void ActivityProfilerController::prepareTrace(const Config &config) {
   // Requests from ActivityProfilerApi have higher priority than
   // requests from other sources (signal, daemon).
   // Cancel any ongoing request and refuse new ones.
@@ -342,8 +345,8 @@ void ActivityProfilerController::startTrace() {
   profiler_->startTrace(std::chrono::system_clock::now());
 }
 
-std::unique_ptr<ActivityTraceInterface> ActivityProfilerController::
-    stopTrace() {
+std::unique_ptr<ActivityTraceInterface>
+ActivityProfilerController::stopTrace() {
   profiler_->stopTrace(std::chrono::system_clock::now());
   UST_LOGGER_MARK_COMPLETED(kCollectionStage);
   auto logger = std::make_unique<MemoryTraceLogger>(profiler_->config());
@@ -363,17 +366,14 @@ std::unique_ptr<ActivityTraceInterface> ActivityProfilerController::
   return std::make_unique<ActivityTrace>(std::move(logger), loggerFactory());
 }
 
-void ActivityProfilerController::addMetadata(
-    const std::string& key,
-    const std::string& value) {
+void ActivityProfilerController::addMetadata(const std::string &key,
+                                             const std::string &value) {
   profiler_->addMetadata(key, value);
 }
 
 void ActivityProfilerController::logInvariantViolation(
-    const std::string& profile_id,
-    const std::string& assertion,
-    const std::string& error,
-    const std::string& group_profile_id) {
+    const std::string &profile_id, const std::string &assertion,
+    const std::string &error, const std::string &group_profile_id) {
   if (invariantViolationsLoggerFactory()) {
     invariantViolationsLoggerFactory()->logInvariantViolation(
         profile_id, assertion, error, group_profile_id);
