@@ -48,6 +48,7 @@
 #include "kineto_tracer.h"
 #include "libkineto.h"
 #include "output_base.h"
+#include "output_orca.h"
 
 namespace KINETO_NAMESPACE {
 
@@ -184,6 +185,12 @@ class CuptiActivityProfiler {
   // Used for async requests
   void setLogger(ActivityLogger* logger) {
     logger_ = logger;
+    if (auto orcaLogger = dynamic_cast<OrcaTraceLogger*>(logger_)) {
+      auto kinetoTorchOpTracer = std::dynamic_pointer_cast<KinetoTorchOpTracer>(kinetoTracers_[0]);
+      auto kinetoMiscTracer = std::dynamic_pointer_cast<KinetoMiscTracer>(kinetoTracers_[1]);
+      auto kinetoMetadataTracer = std::dynamic_pointer_cast<KinetoMetadataTracer>(kinetoTracers_[2]);
+      orcaLogger->bindTracers(kinetoTorchOpTracer, kinetoMiscTracer, kinetoMetadataTracer);
+    }
   }
 
   inline void setCpuActivityPresent(bool val) {

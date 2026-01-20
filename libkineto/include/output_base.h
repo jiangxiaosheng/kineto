@@ -82,10 +82,6 @@ class ActivityLogger {
   // Set current rank. Only used for OrcaTraceLogger.
   virtual void setRank(int rank) {}
 
-  virtual bool isOrcaLogger() const {
-    return false;
-  }
-
  protected:
   ActivityLogger() = default;
 };

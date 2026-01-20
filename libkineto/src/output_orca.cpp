@@ -10,10 +10,10 @@
 #include <cstdint>
 #include <cstring>
 #include <sstream>
+#include "ChromeTime.h"
 #include "Logger.h"
 #include "fmt/format.h"
 #include "kineto_tracer.h"
-#include "ChromeTime.h"
 namespace KINETO_NAMESPACE {
 
 static constexpr int kSchemaVersion = 1;
@@ -99,16 +99,7 @@ void OrcaTraceLogger::handleTraceStart(
   }
 }
 
-OrcaTraceLogger::OrcaTraceLogger(
-    const KinetoTorchOpTracerRef& kinetoTorchOpTracer,
-    const KinetoMiscTracerRef& kinetoMiscTracer,
-    const KinetoMetadataTracerRef& kinetoMetadataTracer,
-    int rank)
-    : kinetoTorchOpTracer_(kinetoTorchOpTracer),
-      kinetoMiscTracer_(kinetoMiscTracer),
-      kinetoMetadataTracer_(kinetoMetadataTracer),
-      rank_(rank),
-      timestep_(0) {}
+OrcaTraceLogger::OrcaTraceLogger() : timestep_(0) {}
 
 void OrcaTraceLogger::handleDeviceInfo(const DeviceInfo& info, uint64_t time) {
   int64_t time_rel = transToRelativeTime(time);
@@ -580,29 +571,29 @@ void OrcaTraceLogger::addOnDemandDistMetadata() {
     return;
   }
   KinetoMetadataEvent dist_metadata_event{
-    .base =
-        EventBase{
-            .timestep = timestep_,
-            .rank = rank_,
-        },
+      .base =
+          EventBase{
+              .timestep = timestep_,
+              .rank = rank_,
+          },
   };
   std::string distinfo = fmt::format(
-    R"("backend"={},"rank"={},"world_size"={},"pg_count"={},"pg_config"=[)",
+      R"("backend"={},"rank"={},"world_size"={},"pg_count"={},"pg_config"=[)",
       distInfo_.backend,
       distInfo_.rank,
       distInfo_.world_size,
       std::to_string(pgMap.size()));
   for (const auto& element : pgMap) {
     distinfo += fmt::format(
-      R"("pg_name"={},"pg_desc"={},"backend_config"={},"pg_size"={},"ranks"={})",
-      element.second.pg_name,
-      element.second.pg_desc,
-      element.second.backend_config,
-      element.second.pg_size,
-      element.second.ranks);
+        R"("pg_name"={},"pg_desc"={},"backend_config"={},"pg_size"={},"ranks"={})",
+        element.second.pg_name,
+        element.second.pg_desc,
+        element.second.backend_config,
+        element.second.pg_size,
+        element.second.ranks);
   }
   distinfo += fmt::format(R"(],"nccl_version"={})", distInfo_.nccl_version);
-    
+
   dist_metadata_event.key = "distributedInfo";
   dist_metadata_event.value = distinfo;
   addKinetoMetadataEvent(dist_metadata_event);
@@ -618,18 +609,18 @@ void OrcaTraceLogger::finalizeTrace(
   endTime = transToRelativeTime(endTime);
   std::string args = fmt::format(R"("s"=g)");
   KinetoMiscEvent end_event{
-    .base =
-        EventBase{
-            .timestep = timestep_,
-            .rank = rank_,
-        },
-    .ph = 'i',
-    .cat = "",
-    .name = "Record Window End",
-    .pid = -1,
-    .tid = -1,
-    .ts = static_cast<float>(endTime) / 1000.0f,
-    .args = args,
+      .base =
+          EventBase{
+              .timestep = timestep_,
+              .rank = rank_,
+          },
+      .ph = 'i',
+      .cat = "",
+      .name = "Record Window End",
+      .pid = -1,
+      .tid = -1,
+      .ts = static_cast<float>(endTime) / 1000.0f,
+      .args = args,
   };
   addKinetoMiscEvent(end_event);
 
@@ -638,11 +629,11 @@ void OrcaTraceLogger::finalizeTrace(
   }
 
   KinetoMetadataEvent end_metadata_event{
-    .base =
-        EventBase{
-            .timestep = timestep_,
-            .rank = rank_,
-        },
+      .base =
+          EventBase{
+              .timestep = timestep_,
+              .rank = rank_,
+          },
   };
 
 #if !USE_GOOGLE_LOG
@@ -653,7 +644,7 @@ void OrcaTraceLogger::finalizeTrace(
       int mdv_count = kv.second.size();
       for (auto v : kv.second) {
         value.append(fmt::format(R"("{}")", v));
-        if(mdv_count > 1) {
+        if (mdv_count > 1) {
           value.append(",");
           mdv_count--;
         }
@@ -678,7 +669,8 @@ void OrcaTraceLogger::finalizeTrace(
   addKinetoMetadataEvent(end_metadata_event);
 
   end_metadata_event.key = "baseTimeNanoseconds";
-  end_metadata_event.value = std::to_string(ChromeTraceBaseTime::singleton().get());
+  end_metadata_event.value =
+      std::to_string(ChromeTraceBaseTime::singleton().get());
   addKinetoMetadataEvent(end_metadata_event);
 }
 

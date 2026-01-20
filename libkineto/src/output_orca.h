@@ -17,11 +17,7 @@ namespace KINETO_NAMESPACE {
 
 class OrcaTraceLogger : public ActivityLogger {
  public:
-  explicit OrcaTraceLogger(
-      const KinetoTorchOpTracerRef& kinetoTorchOpTracer,
-      const KinetoMiscTracerRef& kinetoMiscTracer,
-      const KinetoMetadataTracerRef& kinetoMetadataTracer,
-      int rank = -1);
+  explicit OrcaTraceLogger();
 
   void handleDeviceInfo(const DeviceInfo& info, uint64_t time) override;
 
@@ -57,8 +53,13 @@ class OrcaTraceLogger : public ActivityLogger {
     rank_ = rank;
   }
 
-  bool isOrcaLogger() const override {
-    return true;
+  // must be called before use
+  void bindTracers(const KinetoTorchOpTracerRef& kinetoTorchOpTracer,
+                   const KinetoMiscTracerRef& kinetoMiscTracer,
+                   const KinetoMetadataTracerRef& kinetoMetadataTracer) {
+    kinetoTorchOpTracer_ = kinetoTorchOpTracer;
+    kinetoMiscTracer_ = kinetoMiscTracer;
+    kinetoMetadataTracer_ = kinetoMetadataTracer;
   }
 
  private:
@@ -66,10 +67,10 @@ class OrcaTraceLogger : public ActivityLogger {
   constexpr static const char* kKinetoMiscProbeName = "misc";
   constexpr static const char* kKinetoMetadataProbeName = "metadata";
 
-  KinetoTorchOpTracerRef kinetoTorchOpTracer_;
-  KinetoMiscTracerRef kinetoMiscTracer_;
-  KinetoMetadataTracerRef kinetoMetadataTracer_;
-  int rank_;
+  KinetoTorchOpTracerRef kinetoTorchOpTracer_{nullptr};
+  KinetoMiscTracerRef kinetoMiscTracer_{nullptr};
+  KinetoMetadataTracerRef kinetoMetadataTracer_{nullptr};
+  int rank_ = -1;
   int timestep_;
   DistributedInfo distInfo_ = DistributedInfo();
   std::unordered_map<std::string, pgConfig> pgMap = {};

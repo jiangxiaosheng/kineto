@@ -116,11 +116,7 @@ static std::unique_ptr<ActivityLogger> makeLogger(const Config &config) {
     return std::make_unique<MemoryTraceLogger>(config);
   }
   if (config.withOrca()) {
-    auto kinetoTorchOpTracer = std::make_shared<KinetoTorchOpTracer>(kKinetoTorchOpTracerSchema);
-    auto kinetoMiscTracer = std::make_shared<KinetoMiscTracer>(kKinetoMiscTracerSchema);
-    auto kinetoMetadataTracer = std::make_shared<KinetoMetadataTracer>(kKinetoMetadataTracerSchema);
-
-    return std::make_unique<OrcaTraceLogger>(kinetoTorchOpTracer, kinetoMiscTracer, kinetoMetadataTracer);
+    return std::make_unique<OrcaTraceLogger>();
   }
   return loggerFactory().makeLogger(config.activitiesLogUrl());
 }
