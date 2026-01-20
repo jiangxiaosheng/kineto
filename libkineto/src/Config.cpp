@@ -94,8 +94,6 @@ constexpr char kProfileWithStack[] = "PROFILE_WITH_STACK";
 constexpr char kProfileWithFlops[] = "PROFILE_WITH_FLOPS";
 constexpr char kProfileWithModules[] = "PROFILE_WITH_MODULES";
 constexpr char kProfileWithOrca[] = "PROFILE_WITH_ORCA";
-constexpr char kFlushIntervalKey[] = "PROFILE_FLUSH_INTERVAL";
-constexpr char kUseMonLoggerKey[] = "PROFILE_USE_MON_LOGGER";
 
 constexpr char kActivitiesWarmupIterationsKey[] =
     "ACTIVITIES_WARMUP_ITERATIONS";

@@ -67,6 +67,7 @@ struct KinetoMetadataEvent {
   F(Int64, tid, event.tid, int64())                   \
   F(Float, ts, event.ts, float32())                   \
   F(Float, dur, event.dur, float32())                 \
+  F(Int64, external_id, event.external_id, int64())   \
   F(Int64, stream, event.stream, int64())             \
   F(Int64, correlation, event.correlation, int64())   \
   F(Float, mem_bw_gbps, event.mem_bw_gbps, float32()) \

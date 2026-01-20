@@ -835,11 +835,12 @@ class CuptiActivityProfiler {
   SchemaTracerRefVec kinetoTracers_;
 
   mon::client::MpiClientRef mpiClient_{nullptr};
+  bool mpiInitialized_{false};
 
   // Distributed pytorch rank and size, used for orca kineto tracer
   int rank_;
   int nsize_;
-  int current_timestep_{0};
+  int64_t currentTimestep_{0};
 
   // LoggerCollector to collect all LOGs during the trace
 #if !USE_GOOGLE_LOG

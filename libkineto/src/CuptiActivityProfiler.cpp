@@ -196,6 +196,9 @@ CuptiActivityProfiler::~CuptiActivityProfiler() {
   if (collectTraceThread_ && collectTraceThread_->joinable()) {
     collectTraceThread_->join();
   }
+  if (mpiInitialized_) {
+    mon::client::ClientUtils::MpiFinalize();
+  }
 }
 
 void CuptiActivityProfiler::transferCpuTrace(
@@ -261,6 +264,7 @@ CuptiActivityProfiler::CuptiActivityProfiler(
   rank_ = std::atoi(env_rank);
   nsize_ = std::atoi(env_nsize);
   mon::client::ClientUtils::MpiInit();
+  mpiInitialized_ = true;
 }
 
 void CuptiActivityProfiler::logGpuVersions() {
@@ -1265,6 +1269,7 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
     int64_t currentIter) {
   auto new_wakeup_time = nextWakeupTime;
   bool warmup_done = false, collection_done = false;
+  currentTimestep_ = currentIter;
 
   VLOG_IF(1, currentIter >= 0)
       << "Run loop on application step(), iteration = " << currentIter;
@@ -1454,7 +1459,7 @@ void CuptiActivityProfiler::startTraceOrca() {
   }
 
   mon::client::InitOpts init_opts = {
-      rank_, nsize_, current_timestep_, kinetoTracers_};
+      rank_, nsize_, static_cast<int>(currentTimestep_), kinetoTracers_};
   mpiClient_ = mon::client::MpiClient::GetInstance();
   mpiClient_->Init(init_opts);
   LOG(INFO) << "MPI client inited";
@@ -1490,11 +1495,12 @@ void CuptiActivityProfiler::stopTraceOrca() {
   // will likely cause segfault while preprocessing is still running.
   currentRunloopState_ = RunloopState::WaitForRequest;
 
-  // FIXME: Needs refactor
   if (mpiClient_) {
     mpiClient_->Destroy();
+    for (auto& tracer : kinetoTracers_) {
+      tracer.reset();
+    }
     LOG(INFO) << "MPI client destroyed";
-    mon::client::ClientUtils::MpiFinalize();
     mpiClient_ = nullptr;
   }
 }
