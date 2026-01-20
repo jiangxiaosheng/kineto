@@ -59,6 +59,13 @@ class ActivityLogger {
       const std::unordered_map<std::string, std::string>& metadata,
       const std::string& device_properties) = 0;
 
+  // For orca logger we need not to parse the device properties into a string,
+  // while we rather pass it as a map of key-value pairs to write the metadata event.
+  // Only meant to be overridden by OrcaTraceLogger.
+  virtual void handleTraceStart(
+      const std::unordered_map<std::string, std::string>& metadata,
+      const std::unordered_map<std::string, std::string>& device_properties) {}
+
   void handleTraceStart() {
     handleTraceStart(std::unordered_map<std::string, std::string>(), "");
   }
@@ -68,12 +75,39 @@ class ActivityLogger {
       std::unique_ptr<ActivityBuffers> buffers,
       int64_t endTime,
       std::unordered_map<std::string, std::vector<std::string>>& metadata) = 0;
-  
-  // Set current timestep. Only used for MonTraceLogger.
+
+  // Set current timestep. Only used for OrcaTraceLogger.
   virtual void setTimestep(int timestep) {}
+
+  // Set current rank. Only used for OrcaTraceLogger.
+  virtual void setRank(int rank) {}
+
+  virtual bool isOrcaLogger() const {
+    return false;
+  }
 
  protected:
   ActivityLogger() = default;
+};
+
+struct pgConfig {
+  pgConfig() = default;
+  std::string pg_name{""};
+  std::string pg_desc{""};
+  std::string backend_config{""};
+  std::string pg_size{""};
+  std::string ranks{""};
+};
+
+struct DistributedInfo {
+  DistributedInfo() = default;
+
+  std::string backend{""};
+  std::string rank{""};
+  std::string world_size{""};
+  std::string pg_count{""};
+  std::string nccl_version{""};
+  bool distInfo_present_{false};
 };
 
 } // namespace libkineto

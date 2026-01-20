@@ -9,6 +9,7 @@
 #include "CuptiActivity.h"
 
 #include <fmt/format.h>
+#include <string>
 
 #include "Demangle.h"
 #include "DeviceProperties.h"
@@ -56,6 +57,16 @@ inline std::string eventSyncInfo(
       act.cudaEventId);
 }
 
+inline std::string eventSyncInfoPlain(
+    const CUpti_ActivitySynchronization& act,
+    int32_t srcStream,
+    int32_t srcCorrId) {
+  return fmt::format(
+      R"("wait_on_stream"={},"wait_on_cuda_event_record_corr_id"={},"wait_on_cuda_event_id"={},)",
+      srcStream,
+      srcCorrId,
+      act.cudaEventId);
+}
 inline const std::string CudaSyncActivity::name() const {
   return syncTypeString(raw().type);
 }
@@ -93,21 +104,23 @@ inline const std::string CudaSyncActivity::metadataJson() const {
   return "";
 }
 
-const ActivityExtraFields CudaSyncActivity::getExtraFields() const {
+std::pair<ITraceActivity::PromotedFields, std::string> CudaSyncActivity::
+    getMetadata() const {
   const CUpti_ActivitySynchronization& sync = raw();
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = sync.streamId;
-  arrowMetadata.correlation = sync.correlationId;
-  arrowMetadata.bytes = -1;
-  arrowMetadata.memBw = 0.0;
-  if (isEventSync(sync.type)) {
-    arrowMetadata.waitOnStream = srcStream_;
-    arrowMetadata.waitOnCudaEvent = srcCorrId_;
-  } else {
-    arrowMetadata.waitOnStream = -1;
-    arrowMetadata.waitOnCudaEvent = -1;
-  }
-  return arrowMetadata;
+  PromotedFields promoted_fields = {
+      .stream = static_cast<int32_t>(sync.streamId),
+      .correlation = sync.correlationId,
+      .mem_bw = 0.0f,
+  };
+  std::string metadata = fmt::format(
+      R"("cuda_sync_kind"={},{}"device"={},"context"={})",
+      syncTypeString(sync.type),
+      isEventSync(raw().type)
+          ? eventSyncInfoPlain(raw(), srcStream_, srcCorrId_)
+          : "",
+      deviceId(),
+      sync.contextId);
+  return std::make_pair(promoted_fields, metadata);
 }
 
 template <class T>
@@ -153,16 +166,35 @@ inline const std::string GpuActivity<CUpti_ActivityKernel4>::metadataJson()
 }
 
 template <>
-const ActivityExtraFields GpuActivity<CUpti_ActivityKernel4>::getExtraFields() const {
+std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
+    CUpti_ActivityKernel4>::getMetadata() const {
   const CUpti_ActivityKernel4& kernel = raw();
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = kernel.streamId;
-  arrowMetadata.correlation = kernel.correlationId;
-  arrowMetadata.bytes = -1;
-  arrowMetadata.memBw = 0.0;
-  arrowMetadata.waitOnStream = -1;
-  arrowMetadata.waitOnCudaEvent = -1;
-  return arrowMetadata;
+  PromotedFields promoted_fields = {
+      .stream = kernel.streamId,
+      .correlation = kernel.correlationId,
+      .mem_bw = 0.0f,
+  };
+  float blocksPerSmVal = blocksPerSm(kernel);
+  float warpsPerSmVal = warpsPerSm(kernel);
+
+  std::string metadata = fmt::format(
+      R"("queued"={},"device"={},"context"={},"registers per thread"={},"shared memory"={},"
+      "blocks per SM"={},"warps per SM"={},"grid"=[{},{},{}], "block"=[{},{},{}],"est. achieved occupancy %"={})",
+      kernel.queued,
+      kernel.deviceId,
+      kernel.contextId,
+      kernel.registersPerThread,
+      kernel.staticSharedMemory + kernel.dynamicSharedMemory,
+      std::isinf(blocksPerSmVal) ? "\"inf\"" : std::to_string(blocksPerSmVal),
+      std::isinf(warpsPerSmVal) ? "\"inf\"" : std::to_string(warpsPerSmVal),
+      kernel.gridX,
+      kernel.gridY,
+      kernel.gridZ,
+      kernel.blockX,
+      kernel.blockY,
+      kernel.blockZ,
+      (int)(0.5 + kernelOccupancy(kernel) * 100.0));
+  return std::make_pair(promoted_fields, metadata);
 }
 
 inline std::string memcpyName(uint8_t kind, uint8_t src, uint8_t dst) {
@@ -187,6 +219,12 @@ inline std::string bandwidth(uint64_t bytes, uint64_t duration) {
   return duration == 0 ? "\"N/A\"" : fmt::format("{}", bytes * 1.0 / duration);
 }
 
+inline float bandwidthFloat(uint64_t bytes, uint64_t duration) {
+  return duration == 0
+      ? 0.0f
+      : static_cast<float>(bytes) / static_cast<float>(duration);
+}
+
 template <>
 inline const std::string GpuActivity<CUpti_ActivityMemcpy>::metadataJson()
     const {
@@ -203,17 +241,19 @@ inline const std::string GpuActivity<CUpti_ActivityMemcpy>::metadataJson()
 }
 
 template <>
-const ActivityExtraFields GpuActivity<CUpti_ActivityMemcpy>::getExtraFields() const {
+std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
+    CUpti_ActivityMemcpy>::getMetadata() const {
   const CUpti_ActivityMemcpy& memcpy = raw();
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = memcpy.streamId;
-  arrowMetadata.correlation = memcpy.correlationId;
-  arrowMetadata.bytes = static_cast<int64_t>(memcpy.bytes);
-  auto bw = bandwidth(memcpy.bytes, duration());
-  arrowMetadata.memBw = bw == "\"N/A\"" ? 0.0 : std::stod(bw);
-  arrowMetadata.waitOnStream = -1;
-  arrowMetadata.waitOnCudaEvent = -1;
-  return arrowMetadata;
+  PromotedFields promoted_fields = {
+      memcpy.streamId,
+      memcpy.correlationId,
+      bandwidthFloat(memcpy.bytes, duration())};
+  std::string metadata = fmt::format(
+      R"X("device"={},"context"={},"bytes"={})X",
+      memcpy.deviceId,
+      memcpy.contextId,
+      memcpy.bytes);
+  return std::make_pair(promoted_fields, metadata);
 }
 
 template <>
@@ -244,17 +284,24 @@ inline const std::string GpuActivity<CUpti_ActivityMemcpy2>::metadataJson()
 }
 
 template <>
-const ActivityExtraFields GpuActivity<CUpti_ActivityMemcpy2>::getExtraFields() const {
+std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
+    CUpti_ActivityMemcpy2>::getMetadata() const {
   const CUpti_ActivityMemcpy2& memcpy = raw();
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = memcpy.streamId;
-  arrowMetadata.correlation = memcpy.correlationId;
-  arrowMetadata.bytes = static_cast<int64_t>(memcpy.bytes);
-  auto bw = bandwidth(memcpy.bytes, duration());
-  arrowMetadata.memBw = bw == "\"N/A\"" ? 0.0 : std::stod(bw);
-  arrowMetadata.waitOnStream = -1;
-  arrowMetadata.waitOnCudaEvent = -1;
-  return arrowMetadata;
+  PromotedFields promoted_fields = {
+      memcpy.streamId,
+      memcpy.correlationId,
+      bandwidthFloat(memcpy.bytes, duration())};
+  std::string metadata = fmt::format(
+      R"X("fromDevice"={},"inDevice"={},"toDevice"={},"fromContext"={},"
+      "inContext"={},"toContext"={},"bytes"={})X",
+      memcpy.srcDeviceId,
+      memcpy.deviceId,
+      memcpy.dstDeviceId,
+      memcpy.srcContextId,
+      memcpy.contextId,
+      memcpy.dstContextId,
+      memcpy.bytes);
+  return std::make_pair(promoted_fields, metadata);
 }
 
 template <>
@@ -285,17 +332,19 @@ inline const std::string GpuActivity<CUpti_ActivityMemset>::metadataJson()
 }
 
 template <>
-const ActivityExtraFields GpuActivity<CUpti_ActivityMemset>::getExtraFields() const {
+std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
+    CUpti_ActivityMemset>::getMetadata() const {
   const CUpti_ActivityMemset& memset = raw();
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = memset.streamId;
-  arrowMetadata.correlation = memset.correlationId;
-  arrowMetadata.bytes = static_cast<int64_t>(memset.bytes);
-  auto bw = bandwidth(memset.bytes, duration());
-  arrowMetadata.memBw = bw == "\"N/A\"" ? 0.0 : std::stod(bw);
-  arrowMetadata.waitOnStream = -1;
-  arrowMetadata.waitOnCudaEvent = -1;
-  return arrowMetadata;
+  PromotedFields promoted_fields = {
+      .stream = memset.streamId,
+      .correlation = memset.correlationId,
+      .mem_bw = bandwidthFloat(memset.bytes, duration())};
+  std::string metadata = fmt::format(
+      R"X("device"={},"context"={},"bytes"={})X",
+      memset.deviceId,
+      memset.contextId,
+      memset.bytes);
+  return std::make_pair(promoted_fields, metadata);
 }
 
 inline void RuntimeActivity::log(ActivityLogger& logger) const {
@@ -318,15 +367,9 @@ inline const std::string OverheadActivity::metadataJson() const {
   return "";
 }
 
-const ActivityExtraFields OverheadActivity::getExtraFields() const {
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = -1;
-  arrowMetadata.correlation = -1;
-  arrowMetadata.bytes = -1;
-  arrowMetadata.memBw = 0.0;
-  arrowMetadata.waitOnStream = -1;
-  arrowMetadata.waitOnCudaEvent = -1;
-  return arrowMetadata;
+std::pair<ITraceActivity::PromotedFields, std::string> OverheadActivity::
+    getMetadata() const {
+  return std::make_pair(ITraceActivity::PromotedFields(), "");
 }
 
 inline bool RuntimeActivity::flowStart() const {
@@ -358,15 +401,15 @@ inline const std::string RuntimeActivity::metadataJson() const {
       activity_.correlationId);
 }
 
-const ActivityExtraFields RuntimeActivity::getExtraFields() const {
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = -1;
-  arrowMetadata.correlation = activity_.correlationId;
-  arrowMetadata.bytes = -1;
-  arrowMetadata.memBw = 0.0;
-  arrowMetadata.waitOnStream = -1;
-  arrowMetadata.waitOnCudaEvent = -1;
-  return arrowMetadata;
+std::pair<ITraceActivity::PromotedFields, std::string> RuntimeActivity::
+    getMetadata() const {
+  PromotedFields promoted_fields = {
+      .stream = -1,
+      .correlation = activity_.correlationId,
+      .mem_bw = 0.0f,
+  };
+  std::string metadata = fmt::format(R"X("cbid"={})X", activity_.cbid);
+  return std::make_pair(promoted_fields, metadata);
 }
 
 inline bool isKernelLaunchApi(const CUpti_ActivityAPI& activity_) {
@@ -389,15 +432,15 @@ inline const std::string DriverActivity::metadataJson() const {
       activity_.correlationId);
 }
 
-const ActivityExtraFields DriverActivity::getExtraFields() const {
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = -1;
-  arrowMetadata.correlation = activity_.correlationId;
-  arrowMetadata.bytes = -1;
-  arrowMetadata.memBw = 0.0;
-  arrowMetadata.waitOnStream = -1;
-  arrowMetadata.waitOnCudaEvent = -1;
-  return arrowMetadata;
+std::pair<ITraceActivity::PromotedFields, std::string> DriverActivity::
+    getMetadata() const {
+  PromotedFields promoted_fields = {
+      .stream = -1,
+      .correlation = activity_.correlationId,
+      .mem_bw = 0.0f,
+  };
+  std::string metadata = fmt::format(R"X("cbid"={})X", activity_.cbid);
+  return std::make_pair(promoted_fields, metadata);
 }
 
 inline const std::string DriverActivity::name() const {
@@ -421,15 +464,9 @@ inline const std::string GpuActivity<T>::metadataJson() const {
 }
 
 template <class T>
-const ActivityExtraFields GpuActivity<T>::getExtraFields() const {
-  ActivityExtraFields arrowMetadata{};
-  arrowMetadata.stream = -1;
-  arrowMetadata.correlation = -1;
-  arrowMetadata.bytes = -1;
-  arrowMetadata.memBw = 0.0;
-  arrowMetadata.waitOnStream = -1;
-  arrowMetadata.waitOnCudaEvent = -1;
-  return arrowMetadata;
+std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
+    T>::getMetadata() const {
+  return std::make_pair(ITraceActivity::PromotedFields(), "");
 }
 
 } // namespace KINETO_NAMESPACE

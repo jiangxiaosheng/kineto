@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "ActivityType.h"
@@ -16,18 +17,6 @@ namespace libkineto {
 
 class ActivityLogger;
 struct TraceSpan;
-
-// These metadata cannot be directly retrieved via public methods, and they
-// are needed to build the arrow table for HTA, so we add this struct to hold
-// the relevant metadata and a new method to get it.
-struct ActivityExtraFields {
-  int64_t stream;
-  int64_t correlation;
-  int64_t bytes;
-  double memBw;
-  int64_t waitOnStream;
-  int64_t waitOnCudaEvent;
-};
 
 // Generic activity interface is borrowed from tensorboard protobuf format.
 struct ITraceActivity {
@@ -65,8 +54,17 @@ struct ITraceActivity {
   virtual const std::string getMetadataValue(const std::string& key) const {
     return "";
   }
-  // Return the required metadata for HTA
-  virtual const ActivityExtraFields getExtraFields() const = 0;
+  
+  // The fields are: stream, correlation, mem_bw
+  struct PromotedFields {
+    int64_t stream = -1;
+    int64_t correlation = -1;
+    float mem_bw = 0.0f;
+  };
+  // Similar to metadataJson, but return a string in the format of "key1=value1,key2=value2,..."
+  // This will be used to populate the misc_args field of the KinetoEvent.
+  // Will exclude the promoted fields.
+  virtual std::pair<PromotedFields, std::string> getMetadata() const = 0;
 
   static int64_t nsToUs(int64_t ns) {
     // It's important that this conversion is the same everywhere.

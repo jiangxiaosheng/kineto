@@ -10,6 +10,7 @@
 
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+#include <cstddef>
 #include <vector>
 
 #if defined(HAS_CUPTI)
@@ -120,6 +121,66 @@ static const std::string createDevicePropertiesJson() {
 const std::string& devicePropertiesJson() {
   static std::string devicePropsJson = createDevicePropertiesJson();
   return devicePropsJson;
+}
+
+static const std::string makeDevicePropertyKey(
+    size_t id,
+    const std::string& key) {
+  return fmt::format("device_{}:{}", id, key);
+}
+
+static const std::unordered_map<std::string, std::string>
+createDevicePropertyMap(size_t id, const gpuDeviceProp& props) {
+  std::unordered_map<std::string, std::string> propMap;
+#if defined(HAS_CUPTI)
+  propMap[makeDevicePropertyKey(id, "regsPerMultiprocessor")] =
+      std::to_string(props.regsPerMultiprocessor);
+  propMap[makeDevicePropertyKey(id, "sharedMemPerBlockOptin")] =
+      std::to_string(props.sharedMemPerBlockOptin);
+  propMap[makeDevicePropertyKey(id, "sharedMemPerMultiprocessor")] =
+      std::to_string(props.sharedMemPerMultiprocessor);
+#elif defined(HAS_ROCTRACER)
+  propMap[makeDevicePropertyKey(id, "maxSharedMemoryPerMultiProcessor")] =
+      std::to_string(props.maxSharedMemoryPerMultiProcessor);
+#endif
+
+  propMap[makeDevicePropertyKey(id, "name")] = props.name;
+  propMap[makeDevicePropertyKey(id, "totalGlobalMem")] =
+      std::to_string(props.totalGlobalMem);
+  propMap[makeDevicePropertyKey(id, "computeMajor")] =
+      std::to_string(props.major);
+  propMap[makeDevicePropertyKey(id, "computeMinor")] =
+      std::to_string(props.minor);
+  propMap[makeDevicePropertyKey(id, "maxThreadsPerBlock")] =
+      std::to_string(props.maxThreadsPerBlock);
+  propMap[makeDevicePropertyKey(id, "maxThreadsPerMultiprocessor")] =
+      std::to_string(props.maxThreadsPerMultiProcessor);
+  propMap[makeDevicePropertyKey(id, "regsPerBlock")] =
+      std::to_string(props.regsPerBlock);
+  propMap[makeDevicePropertyKey(id, "warpSize")] =
+      std::to_string(props.warpSize);
+  propMap[makeDevicePropertyKey(id, "sharedMemPerBlock")] =
+      std::to_string(props.sharedMemPerBlock);
+  propMap[makeDevicePropertyKey(id, "numSms")] =
+      std::to_string(props.multiProcessorCount);
+
+  return propMap;
+}
+
+static const std::unordered_map<std::string, std::string>
+createDevicePropertiesMap() {
+  const auto& props = deviceProps();
+  std::unordered_map<std::string, std::string> propMap;
+  for (size_t i = 0; i < props.size(); i++) {
+    const auto map = createDevicePropertyMap(i, props[i]);
+    propMap.insert(map.begin(), map.end());
+  }
+  return propMap;
+}
+
+const std::unordered_map<std::string, std::string>& devicePropertiesMap() {
+  static auto devicePropsMap = createDevicePropertiesMap();
+  return devicePropsMap;
 }
 
 int smCount(uint32_t deviceId) {

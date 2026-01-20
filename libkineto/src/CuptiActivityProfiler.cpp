@@ -29,6 +29,7 @@
 #include "ApproximateClock.h"
 #include "ILoggerObserver.h"
 #include "libkineto.h"
+#include "output_orca.h"
 
 #ifdef HAS_CUPTI
 #include <cupti.h>
@@ -234,7 +235,15 @@ CuptiActivityProfiler::CuptiActivityProfiler(
   if (isGpuAvailable()) {
     logGpuVersions();
   }
-  kinetoTracer_ = std::make_shared<KinetoTracer>(kKinetoSchema);
+  auto kinetoTorchOpTracer =
+      std::make_shared<KinetoTorchOpTracer>(kKinetoTorchOpTracerSchema);
+  auto kinetoMiscTracer =
+      std::make_shared<KinetoMiscTracer>(kKinetoMiscTracerSchema);
+  auto kinetoMetadataTracer =
+      std::make_shared<KinetoMetadataTracer>(kKinetoMetadataTracerSchema);
+  kinetoTracers_.push_back(kinetoTorchOpTracer);
+  kinetoTracers_.push_back(kinetoMiscTracer);
+  kinetoTracers_.push_back(kinetoMetadataTracer);
 
   // The below env vars should have been exported from mpirun
   const char* env_rank = getenv("RANK");
@@ -308,9 +317,11 @@ void CuptiActivityProfiler::processTraceInternal(ActivityLogger& logger) {
     addMetadata(pair.first, pair.second);
   }
   std::vector<std::string> device_properties;
-  if (auto props = devicePropertiesJson(); !props.empty()) {
+  if (auto const& props = devicePropertiesJson(); !props.empty()) {
     device_properties.push_back(props);
   }
+  // getDeviceProperties() is in fact not overriden and would just simply
+  // return an empty string, thus device_properties only contains 1 element
   for (const auto& session : sessions_) {
     if (auto props = session->getDeviceProperties(); !props.empty()) {
       if (std::find(
@@ -1142,6 +1153,7 @@ void CuptiActivityProfiler::configure(
   traceBuffers_ = std::make_unique<ActivityBuffers>();
   captureWindowStartTime_ = captureWindowEndTime_ = 0;
   currentRunloopState_ = RunloopState::Warmup;
+  logger_->setRank(rank_);
 }
 
 bool CuptiActivityProfiler::getCollectTraceState() {
@@ -1442,7 +1454,7 @@ void CuptiActivityProfiler::startTraceOrca() {
   }
 
   mon::client::InitOpts init_opts = {
-      rank_, nsize_, current_timestep_, {kinetoTracer_}};
+      rank_, nsize_, current_timestep_, kinetoTracers_};
   mpiClient_ = mon::client::MpiClient::GetInstance();
   mpiClient_->Init(init_opts);
   LOG(INFO) << "MPI client inited";
@@ -1527,13 +1539,9 @@ void CuptiActivityProfiler::TraceSnapshot::processTrace(
   for (auto& pair : versionMetadata) {
     metadata[pair.first] = pair.second;
   }
-  std::vector<std::string> device_properties;
-  if (auto props = devicePropertiesJson(); !props.empty()) {
-    device_properties.push_back(props);
-  }
+  const auto& device_properties = devicePropertiesMap();
+  logger.handleTraceStart(metadata, device_properties);
 
-  logger.handleTraceStart(
-      metadata, fmt::format("{}", fmt::join(device_properties, ",")));
   setCpuActivityPresent(false);
   setGpuActivityPresent(false);
   for (auto& cpu_trace : traceBuffers->cpu) {
@@ -2118,14 +2126,9 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
   LOG(INFO) << "Making trace snapshot for step " << currentIter;
   auto trace_snapshot = makeTraceSnapshot();
 
-  ActivityLogger* logger = nullptr;
-  if (flush_logger_ == nullptr && config_->withOrca()) {
-    flush_logger_ = std::make_shared<MonTraceLogger>(kinetoTracer_, rank_);
-  }
-
   bool is_last_step = currentIter == derivedConfig_->profileEndIteration();
-  flush_logger_->setTimestep(static_cast<int>(currentIter));
-  trace_snapshot->processTrace(*flush_logger_);
+  logger_->setTimestep(static_cast<int>(currentIter));
+  trace_snapshot->processTrace(*logger_);
 
   if (is_last_step) {
     if (libkineto::api().client()) {

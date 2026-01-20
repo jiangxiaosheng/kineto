@@ -33,26 +33,6 @@ namespace KINETO_NAMESPACE {
 
 class Config;
 
-struct pgConfig {
-  pgConfig() = default;
-  std::string pg_name{""};
-  std::string pg_desc{""};
-  std::string backend_config{""};
-  std::string pg_size{""};
-  std::string ranks{""};
-};
-
-struct DistributedInfo {
-  DistributedInfo() = default;
-
-  std::string backend{""};
-  std::string rank{""};
-  std::string world_size{""};
-  std::string pg_count{""};
-  std::string nccl_version{""};
-  bool distInfo_present_{false};
-};
-
 class ChromeTraceLogger : public libkineto::ActivityLogger {
  public:
   explicit ChromeTraceLogger(const std::string& traceFileName);
@@ -121,43 +101,6 @@ class ChromeTraceLogger : public libkineto::ActivityLogger {
   // pg_name, value is pgConfig that will be used to populate pg_config in
   // distributedInfo of trace
   std::unordered_map<std::string, pgConfig> pgMap = {};
-};
-
-// std::chrono header start
-#ifdef _GLIBCXX_USE_C99_STDINT_TR1
-#define _KINETO_GLIBCXX_CHRONO_INT64_T int64_t
-#elif defined __INT64_TYPE__
-#define _KINETO_GLIBCXX_CHRONO_INT64_T __INT64_TYPE__
-#else
-#define _KINETO_GLIBCXX_CHRONO_INT64_T long long
-#endif
-// std::chrono header end
-
-// There are tools like Chrome Trace Viewer that uses double to represent
-// each element in the timeline. Double has a 53 bit mantissa to support
-// up to 2^53 significant digits (up to 9007199254740992). This holds at the
-// nanosecond level, about 3 months and 12 days. So, let's round base time to
-// 3 months intervals, so we can still collect traces across ranks relative
-// to each other.
-// A month is 2629746, so 3 months is 7889238.
-using _trimonths =
-    std::chrono::duration<_KINETO_GLIBCXX_CHRONO_INT64_T, std::ratio<7889238>>;
-#undef _GLIBCXX_CHRONO_INT64_T
-
-class ChromeTraceBaseTime {
- public:
-  ChromeTraceBaseTime() = default;
-  static ChromeTraceBaseTime& singleton();
-  void init() {
-    get();
-  }
-  int64_t get() {
-    // Make all timestamps relative to 3 month intervals.
-    static int64_t base_time = libkineto::timeSinceEpoch(
-        std::chrono::time_point<std::chrono::system_clock>(
-            std::chrono::floor<_trimonths>(std::chrono::system_clock::now())));
-    return base_time;
-  }
 };
 
 } // namespace KINETO_NAMESPACE

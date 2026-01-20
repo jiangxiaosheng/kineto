@@ -724,7 +724,7 @@ class CuptiActivityProfiler {
   // In flush mode it could be the case where we need a unique logger
   // in each iteration.
   // Keep it as separate to avoid messing up the use of logger_
-  std::shared_ptr<ActivityLogger> flush_logger_;
+  // std::shared_ptr<ActivityLogger> flush_logger_;
 
   // Calls to CUPTI is encapsulated behind this interface
 #ifdef HAS_ROCTRACER
@@ -823,11 +823,11 @@ class CuptiActivityProfiler {
 
   ErrorCounts ecs_;
 
-  KinetoTracerRef kinetoTracer_;
+  using SchemaTracerRef = mon::client::SchemaTracerRef;
+  using SchemaTracerRefVec = std::vector<SchemaTracerRef>;
+  SchemaTracerRefVec kinetoTracers_;
 
   mon::client::MpiClientRef mpiClient_{nullptr};
-
-  constexpr static const char* kKinetoSchema = "kineto";
 
   // Distributed pytorch rank and size, used for orca kineto tracer
   int rank_;

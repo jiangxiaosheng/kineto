@@ -59,6 +59,7 @@ def get_libkineto_cpu_only_srcs(with_api = True):
         "src/Logger.cpp",
         "src/LoggingAPI.cpp",
         "src/init.cpp",
+        "src/ChromeTime.cpp",
         "src/output_csv.cpp",
         "src/output_json.cpp",
         "src/output_orca.cpp",

@@ -25,7 +25,7 @@
 #include "output_json.h"
 #include "output_membuf.h"
 #include "output_orca.h"
-
+#include "ChromeTime.h"
 #include "Logger.h"
 
 using namespace std::chrono;
@@ -114,6 +114,13 @@ void ActivityProfilerController::addLoggerFactory(
 static std::unique_ptr<ActivityLogger> makeLogger(const Config &config) {
   if (config.activitiesLogToMemory()) {
     return std::make_unique<MemoryTraceLogger>(config);
+  }
+  if (config.withOrca()) {
+    auto kinetoTorchOpTracer = std::make_shared<KinetoTorchOpTracer>(kKinetoTorchOpTracerSchema);
+    auto kinetoMiscTracer = std::make_shared<KinetoMiscTracer>(kKinetoMiscTracerSchema);
+    auto kinetoMetadataTracer = std::make_shared<KinetoMetadataTracer>(kKinetoMetadataTracerSchema);
+
+    return std::make_unique<OrcaTraceLogger>(kinetoTorchOpTracer, kinetoMiscTracer, kinetoMetadataTracer);
   }
   return loggerFactory().makeLogger(config.activitiesLogUrl());
 }
@@ -269,10 +276,8 @@ void ActivityProfilerController::step() {
 // This function should only be called when holding the configLock_.
 void ActivityProfilerController::activateConfig(
     std::chrono::time_point<std::chrono::system_clock> now) {
-  if (!asyncRequestConfig_->withOrca()) {
-    logger_ = makeLogger(*asyncRequestConfig_);
-    profiler_->setLogger(logger_.get());
-  }
+  logger_ = makeLogger(*asyncRequestConfig_);
+  profiler_->setLogger(logger_.get());
   LOGGER_OBSERVER_SET_TRIGGER_ON_DEMAND();
   profiler_->configure(*asyncRequestConfig_, now);
   asyncRequestConfig_ = nullptr;
@@ -307,6 +312,8 @@ void ActivityProfilerController::scheduleTrace(const Config &config) {
 
   if (config.withOrca() && config.isBootstrap()) {
     LOG(INFO) << "Activating ORCA bootstrap config";
+    logger_ = makeLogger(config);
+    profiler_->setLogger(logger_.get());
     profiler_->configure(config, system_clock::now());
     asyncRequestConfig_ = nullptr;
   }

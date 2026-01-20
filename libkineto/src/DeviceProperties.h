@@ -8,7 +8,8 @@
 
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
+#include <unordered_map>
 #include <string>
 
 #ifdef HAS_CUPTI
@@ -19,6 +20,9 @@ namespace KINETO_NAMESPACE {
 
 // Return compute properties for each device as a json string
 const std::string& devicePropertiesJson();
+
+// Return compute properties for each device as a map of key-value pairs
+const std::unordered_map<std::string, std::string>& devicePropertiesMap();
 
 int smCount(uint32_t deviceId);
 

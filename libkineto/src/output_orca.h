@@ -15,11 +15,13 @@
 
 namespace KINETO_NAMESPACE {
 
-class MonTraceLogger : public ActivityLogger {
+class OrcaTraceLogger : public ActivityLogger {
  public:
-  explicit MonTraceLogger(
-      const KinetoTracerRef& kinetoTracer,
-      int rank);
+  explicit OrcaTraceLogger(
+      const KinetoTorchOpTracerRef& kinetoTorchOpTracer,
+      const KinetoMiscTracerRef& kinetoMiscTracer,
+      const KinetoMetadataTracerRef& kinetoMetadataTracer,
+      int rank = -1);
 
   void handleDeviceInfo(const DeviceInfo& info, uint64_t time) override;
 
@@ -36,6 +38,10 @@ class MonTraceLogger : public ActivityLogger {
       const std::unordered_map<std::string, std::string>& metadata,
       const std::string& device_properties) override;
 
+  void handleTraceStart(
+      const std::unordered_map<std::string, std::string>& metadata,
+      const std::unordered_map<std::string, std::string>& device_properties) override;
+
   void finalizeTrace(
       const Config& config,
       std::unique_ptr<ActivityBuffers> buffers,
@@ -47,11 +53,55 @@ class MonTraceLogger : public ActivityLogger {
     timestep_ = timestep;
   }
 
+  void setRank(int rank) override {
+    rank_ = rank;
+  }
+
+  bool isOrcaLogger() const override {
+    return true;
+  }
+
  private:
-  constexpr static const char* kKinetoProbeName = "kineto_events";
-  KinetoTracerRef kinetoTracer_;
+  constexpr static const char* kKinetoTorchOpProbeName = "torch_op";
+  constexpr static const char* kKinetoMiscProbeName = "misc";
+  constexpr static const char* kKinetoMetadataProbeName = "metadata";
+
+  KinetoTorchOpTracerRef kinetoTorchOpTracer_;
+  KinetoMiscTracerRef kinetoMiscTracer_;
+  KinetoMetadataTracerRef kinetoMetadataTracer_;
   int rank_;
   int timestep_;
+  DistributedInfo distInfo_ = DistributedInfo();
+  std::unordered_map<std::string, pgConfig> pgMap = {};
+
+  void handleLink(
+      char type,
+      const ITraceActivity& e,
+      int64_t id,
+      const std::string& name);
+
+  void addIterationMarker(const TraceSpan& span);
+
+  void handleGenericInstantEvent(const ITraceActivity& op);
+
+  void addOnDemandDistMetadata();
+
+  void handleGenericLink(const ITraceActivity& activity);
+
+  void addKinetoTorchOpEvent(const KinetoTorchOpEvent& event) {
+    auto probe_id = kinetoTorchOpTracer_->GetProbeID(kKinetoTorchOpProbeName);
+    kinetoTorchOpTracer_->AddRow(probe_id, event);
+  }
+
+  void addKinetoMiscEvent(const KinetoMiscEvent& event) {
+    auto probe_id = kinetoMiscTracer_->GetProbeID(kKinetoMiscProbeName);
+    kinetoMiscTracer_->AddRow(probe_id, event);
+  }
+
+  void addKinetoMetadataEvent(const KinetoMetadataEvent& event) {
+    auto probe_id = kinetoMetadataTracer_->GetProbeID(kKinetoMetadataProbeName);
+    kinetoMetadataTracer_->AddRow(probe_id, event);
+  }
 };
 
 } // namespace KINETO_NAMESPACE

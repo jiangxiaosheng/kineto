@@ -13,7 +13,7 @@
 #include <fstream>
 #include "Config.h"
 #include "TraceSpan.h"
-
+#include "ChromeTime.h"
 #include "Logger.h"
 
 namespace KINETO_NAMESPACE {
@@ -48,26 +48,6 @@ static constexpr char kDefaultLogFileFmt[] =
 #else
 static constexpr char kDefaultLogFileFmt[] = "libkineto_activities_{}.json";
 #endif
-
-ChromeTraceBaseTime& ChromeTraceBaseTime::singleton() {
-  static ChromeTraceBaseTime instance;
-  return instance;
-}
-
-// The 'ts' field written into the json file has 19 significant digits,
-// while a double can only represent 15-16 digits. By using relative time,
-// other applications can accurately read the 'ts' field as a double.
-// Use the program loading time as the baseline time.
-inline int64_t transToRelativeTime(int64_t time) {
-  // Sometimes after converting to relative time, it can be a few nanoseconds
-  // negative. Since Chrome trace and json processing will throw a parser error,
-  // guard this.
-  int64_t res = time - ChromeTraceBaseTime::singleton().get();
-  if (res < 0) {
-    return 0;
-  }
-  return res;
-}
 
 void ChromeTraceLogger::sanitizeStrForJSON(std::string& value) {
   // Replace all backslashes with forward slash because Windows paths causing

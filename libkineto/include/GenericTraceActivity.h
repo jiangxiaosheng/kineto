@@ -9,6 +9,7 @@
 #pragma once
 
 #include <fmt/format.h>
+#include <cassert>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -124,15 +125,22 @@ class GenericTraceActivity : public ITraceActivity {
     return json.str();
   }
 
-  const ActivityExtraFields getExtraFields() const override {
-    return {
-      .stream = -1,
-      .correlation = id,
-      .bytes = -1,
-      .memBw = 0.0,
-      .waitOnStream = -1,
-      .waitOnCudaEvent = -1,
-    };
+  std::pair<PromotedFields, std::string> getMetadata() const override {
+    std::string args;
+    bool first = true;
+    for (const auto& [key, val] : metadataMap_) {
+      if (!first) {
+        args += ",";
+      }
+      // we assume no promoted fields are present in the metadataMap_
+      assert(
+          key != "stream" && key != "correlation" &&
+          key != "memory bandwidth (GB/s)");
+      val.second ? args += fmt::format(R"("{}"="{}")", key, val.first)
+                 : args += fmt::format(R"("{}"={})", key, val.first);
+      first = false;
+    }
+    return {{-1, -1, 0.0f}, args};
   }
 
   virtual ~GenericTraceActivity() override {}
