@@ -11,10 +11,10 @@
 #include <fmt/format.h>
 #include <time.h>
 #include <fstream>
-#include "Config.h"
-#include "TraceSpan.h"
 #include "ChromeTime.h"
+#include "Config.h"
 #include "Logger.h"
+#include "TraceSpan.h"
 
 namespace KINETO_NAMESPACE {
 
@@ -48,6 +48,15 @@ static constexpr char kDefaultLogFileFmt[] =
 #else
 static constexpr char kDefaultLogFileFmt[] = "libkineto_activities_{}.json";
 #endif
+
+static const std::set<libkineto::ActivityType> excludedTypes = {
+    libkineto::ActivityType::GPU_MEMCPY,
+    libkineto::ActivityType::GPU_MEMSET,
+    libkineto::ActivityType::CONCURRENT_KERNEL,
+    libkineto::ActivityType::CUDA_RUNTIME,
+    libkineto::ActivityType::CUDA_DRIVER,
+    libkineto::ActivityType::PRIVATEUSE1_RUNTIME,
+    libkineto::ActivityType::PRIVATEUSE1_DRIVER};
 
 void ChromeTraceLogger::sanitizeStrForJSON(std::string& value) {
   // Replace all backslashes with forward slash because Windows paths causing
@@ -356,14 +365,6 @@ void ChromeTraceLogger::handleActivity(const libkineto::ITraceActivity& op) {
     // Some runtime events and kernels may not have a linked activity,
     // should not set an "External id" for them. Otherwise, these events
     // may be incorrectly linked to the other external events.
-    static const std::set<libkineto::ActivityType> excludedTypes = {
-        libkineto::ActivityType::GPU_MEMCPY,
-        libkineto::ActivityType::GPU_MEMSET,
-        libkineto::ActivityType::CONCURRENT_KERNEL,
-        libkineto::ActivityType::CUDA_RUNTIME,
-        libkineto::ActivityType::CUDA_DRIVER,
-        libkineto::ActivityType::PRIVATEUSE1_RUNTIME,
-        libkineto::ActivityType::PRIVATEUSE1_DRIVER};
     if (excludedTypes.find(op.type()) == excludedTypes.end()) {
       external_id = op.correlationId();
     }
