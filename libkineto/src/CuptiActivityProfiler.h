@@ -833,6 +833,7 @@ class CuptiActivityProfiler {
   using SchemaTracerRef = mon::client::SchemaTracerRef;
   using SchemaTracerRefVec = std::vector<SchemaTracerRef>;
   SchemaTracerRefVec kinetoTracers_;
+  KinetoOrcaOverheadTracerRef kinetoOrcaOverheadTracer_;
 
   mon::client::MpiClientRef mpiClient_{nullptr};
   bool mpiInitialized_{false};

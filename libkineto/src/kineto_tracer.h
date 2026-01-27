@@ -55,6 +55,11 @@ struct KinetoMetadataEvent {
   std::string value;
 };
 
+struct KinetoOrcaOverheadEvent {
+  EventBase base;
+  int64_t dur_ns;
+};
+
 #define TORCH_OP_EVENT_FIELDS(F)                      \
   F(Int32, timestep, event.base.timestep, int32())    \
   F(UInt64, swid, event.base.swid, uint64())          \
@@ -94,6 +99,14 @@ struct KinetoMetadataEvent {
   F(String, key, event.key, utf8())                \
   F(String, value, event.value, utf8())
 
+// Used to record the overhead time of the kineto ORCA tracer
+#define ORCA_OVERHEAD_EVENT_FIELDS(F)              \
+  F(Int32, timestep, event.base.timestep, int32()) \
+  F(UInt64, swid, event.base.swid, uint64())       \
+  F(Int32, rank, event.base.rank, int32())         \
+  F(UInt64, ts_ns, event.base.ts_ns, uint64())     \
+  F(Int64, dur_ns, event.dur_ns, int64())
+
 class KinetoTorchOpTracer : public SchemaTracer<KinetoTorchOpEvent> {
  public:
   KinetoTorchOpTracer(const char* schema_name, bool debug_mode = false)
@@ -121,13 +134,25 @@ class KinetoMetadataTracer : public SchemaTracer<KinetoMetadataEvent> {
   GENERATE_TRACER_METHODS(KinetoMetadataEvent, METADATA_EVENT_FIELDS)
 };
 
+class KinetoOrcaOverheadTracer : public SchemaTracer<KinetoOrcaOverheadEvent> {
+ public:
+  KinetoOrcaOverheadTracer(const char* schema_name, bool debug_mode = false)
+      : SchemaTracer<KinetoOrcaOverheadEvent>(schema_name, debug_mode)
+            INIT_FIELDS(ORCA_OVERHEAD_EVENT_FIELDS) {}
+
+  GENERATE_TRACER_METHODS(KinetoOrcaOverheadEvent, ORCA_OVERHEAD_EVENT_FIELDS)
+};
+
 constexpr static const char* kKinetoTorchOpTracerSchema =
     "kineto_torch_op_events";
 constexpr static const char* kKinetoMiscTracerSchema = "kineto_misc_events";
 constexpr static const char* kKinetoMetadataTracerSchema =
     "kineto_metadata_events";
+constexpr static const char* kKinetoOrcaOverheadTracerSchema =
+    "kineto_orca_overhead_events";
 
 using KinetoTorchOpTracerRef = std::shared_ptr<KinetoTorchOpTracer>;
 using KinetoMiscTracerRef = std::shared_ptr<KinetoMiscTracer>;
 using KinetoMetadataTracerRef = std::shared_ptr<KinetoMetadataTracer>;
+using KinetoOrcaOverheadTracerRef = std::shared_ptr<KinetoOrcaOverheadTracer>;
 } // namespace KINETO_NAMESPACE
