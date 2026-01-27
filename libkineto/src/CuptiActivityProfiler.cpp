@@ -64,6 +64,23 @@ using std::string;
 
 namespace KINETO_NAMESPACE {
 
+#define TRACE_ORCA_OVERHEAD(NAME, CODE_BLOCK)                      \
+  do {                                                             \
+    auto start_t = libkineto::timeSinceEpoch(system_clock::now()); \
+    { CODE_BLOCK; }                                                \
+    auto end_t = libkineto::timeSinceEpoch(system_clock::now());   \
+    KinetoOrcaOverheadEvent event = {                              \
+        .base =                                                    \
+            {                                                      \
+                .timestep = static_cast<int>(currentTimestep_),    \
+                .rank = rank_,                                     \
+            },                                                     \
+        .dur_ns = end_t - start_t,                                 \
+    };                                                             \
+    auto p_id = kinetoOrcaOverheadTracer_->GetProbeID(NAME);       \
+    kinetoOrcaOverheadTracer_->AddRow(p_id, event);                \
+  } while (0)
+
 // Map (ctx, eventId) -> (stream, corr Id) that recorded the CUDA event
 std::unordered_map<CtxEventPair, WaitEventInfo>& waitEventMap() {
   static std::unordered_map<CtxEventPair, WaitEventInfo> waitEventMap_;
@@ -245,8 +262,8 @@ CuptiActivityProfiler::CuptiActivityProfiler(
       std::make_shared<KinetoMiscTracer>(kKinetoMiscTracerSchema);
   auto kinetoMetadataTracer =
       std::make_shared<KinetoMetadataTracer>(kKinetoMetadataTracerSchema);
-  kinetoOrcaOverheadTracer_ =
-      std::make_shared<KinetoOrcaOverheadTracer>(kKinetoOrcaOverheadTracerSchema);
+  kinetoOrcaOverheadTracer_ = std::make_shared<KinetoOrcaOverheadTracer>(
+      kKinetoOrcaOverheadTracerSchema, true);
   kinetoTracers_.push_back(kinetoTorchOpTracer);
   kinetoTracers_.push_back(kinetoMiscTracer);
   kinetoTracers_.push_back(kinetoMetadataTracer);
@@ -1467,7 +1484,7 @@ void CuptiActivityProfiler::startTraceOrca() {
   mon::client::InitOpts init_opts = {
       rank_, nsize_, static_cast<int>(currentTimestep_), kinetoTracers_};
   mpiClient_ = mon::client::MpiClient::GetInstance();
-  mpiClient_->Init(init_opts);
+  TRACE_ORCA_OVERHEAD("MpiClientInit", mpiClient_->Init(init_opts));
   LOG(INFO) << "MPI client inited";
 
   currentRunloopState_ = RunloopState::ContinuousFlush;
@@ -1502,7 +1519,7 @@ void CuptiActivityProfiler::stopTraceOrca() {
   currentRunloopState_ = RunloopState::WaitForRequest;
 
   if (mpiClient_) {
-    mpiClient_->Destroy();
+    TRACE_ORCA_OVERHEAD("MpiClientDestroy", mpiClient_->Destroy());
     for (auto& tracer : kinetoTracers_) {
       tracer.reset();
     }
@@ -2136,71 +2153,28 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
   // the trace snapshot must be constructed before we pass it to the
   // processing thread
   LOG(INFO) << "Making trace snapshot for step " << currentIter;
-  auto start_time = libkineto::timeSinceEpoch(system_clock::now());
-  auto trace_snapshot = makeTraceSnapshot();
-  auto end_time = libkineto::timeSinceEpoch(system_clock::now());
-  auto elapse = end_time - start_time;
-  
-  KinetoOrcaOverheadEvent orca_overhead = {
-    .base = {
-      .timestep = static_cast<int>(currentTimestep_),
-      .rank = rank_,
-    },
-    .dur_ns = elapse,
-  };
-  auto probe_id = kinetoOrcaOverheadTracer_->GetProbeID("MakeTraceSnapshot");
-  kinetoOrcaOverheadTracer_->AddRow(probe_id, orca_overhead);
+  std::shared_ptr<TraceSnapshot> trace_snapshot;
+  TRACE_ORCA_OVERHEAD(
+      "MakeTraceSnapshot", trace_snapshot = makeTraceSnapshot());
 
   bool is_last_step = currentIter == derivedConfig_->profileEndIteration();
   logger_->setTimestep(static_cast<int>(currentTimestep_));
 
-  start_time = libkineto::timeSinceEpoch(system_clock::now());
-  trace_snapshot->processTrace(*logger_);
-  end_time = libkineto::timeSinceEpoch(system_clock::now());
-  elapse = end_time - start_time;
-  orca_overhead = {
-    .base = {
-      .timestep = static_cast<int>(currentTimestep_),
-      .rank = rank_,
-    },
-    .dur_ns = elapse,
-  };
-  probe_id = kinetoOrcaOverheadTracer_->GetProbeID("ProcessTrace");
-  kinetoOrcaOverheadTracer_->AddRow(probe_id, orca_overhead);
+  TRACE_ORCA_OVERHEAD("ProcessTrace", trace_snapshot->processTrace(*logger_));
 
   if (is_last_step) {
     if (libkineto::api().client()) {
-      start_time = libkineto::timeSinceEpoch(system_clock::now());
+      TRACE_ORCA_OVERHEAD(
+          "ShutdownLibkinetoClient", libkineto::api().client()->shutdown());
       libkineto::api().client()->shutdown();
-      end_time = libkineto::timeSinceEpoch(system_clock::now());
-      elapse = end_time - start_time;
-      orca_overhead = {
-        .base = {
-          .timestep = static_cast<int>(currentTimestep_),
-          .rank = rank_,
-        },
-        .dur_ns = elapse,
-      };
-      probe_id = kinetoOrcaOverheadTracer_->GetProbeID("ShutdownLibkinetoClient");
-      kinetoOrcaOverheadTracer_->AddRow(probe_id, orca_overhead);
+
       LOG(INFO) << "Reached end of step " << currentIter
                 << ", shut down libkineto client";
     }
   }
   if (mpiClient_) {
-    start_time = libkineto::timeSinceEpoch(system_clock::now());
-    mpiClient_->PostTimestepAdvance();
-    end_time = libkineto::timeSinceEpoch(system_clock::now());
-    elapse = end_time - start_time;
-    orca_overhead = {
-      .base = {
-        .timestep = static_cast<int>(currentTimestep_),
-        .rank = rank_,
-      },
-      .dur_ns = elapse,
-    };
-    probe_id = kinetoOrcaOverheadTracer_->GetProbeID("PostTimestepAdvance");
-    kinetoOrcaOverheadTracer_->AddRow(probe_id, orca_overhead);
+    TRACE_ORCA_OVERHEAD(
+        "PostTimestepAdvance", mpiClient_->PostTimestepAdvance());
     LOG(INFO) << "MPI client posting timestep advance";
   }
 }
