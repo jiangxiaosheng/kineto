@@ -1269,7 +1269,6 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
     int64_t currentIter) {
   auto new_wakeup_time = nextWakeupTime;
   bool warmup_done = false, collection_done = false;
-  currentTimestep_ = currentIter;
 
   VLOG_IF(1, currentIter >= 0)
       << "Run loop on application step(), iteration = " << currentIter;
@@ -1304,8 +1303,11 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
         stopTraceOrca();
       }
     }
+    currentTimestep_ = currentIter;
     return new_wakeup_time;
   }
+
+  currentTimestep_ = currentIter;
 
   switch (currentRunloopState_) {
     case RunloopState::WaitForRequest:
@@ -2133,7 +2135,7 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
   auto trace_snapshot = makeTraceSnapshot();
 
   bool is_last_step = currentIter == derivedConfig_->profileEndIteration();
-  logger_->setTimestep(static_cast<int>(currentIter));
+  logger_->setTimestep(static_cast<int>(currentTimestep_));
   trace_snapshot->processTrace(*logger_);
 
   if (is_last_step) {
