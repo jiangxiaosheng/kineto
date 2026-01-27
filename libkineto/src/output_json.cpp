@@ -11,6 +11,7 @@
 #include <fmt/format.h>
 #include <time.h>
 #include <fstream>
+#include <filesystem>
 #include "Config.h"
 #include "TraceSpan.h"
 #include "ChromeTime.h"
@@ -130,7 +131,22 @@ void ChromeTraceLogger::openTraceFile() {
 }
 
 ChromeTraceLogger::ChromeTraceLogger(const std::string& traceFileName) {
-  fileName_ = traceFileName.empty() ? defaultFileName() : traceFileName;
+  const char* rank_s = getenv("RANK");
+  if (rank_s == nullptr) {
+    fileName_ = traceFileName.empty() ? defaultFileName() : traceFileName;
+  } else {
+    int rank = std::atoi(rank_s);
+    std::filesystem::path p(traceFileName);
+    if (p.has_filename()) {
+      p = p.parent_path();
+    }
+    if (!p.empty()) {
+      std::filesystem::create_directories(p);
+    }
+    p /= fmt::format("rank_{}.json", rank);
+    fileName_ = p.string();
+  }
+  
   traceOf_.clear(std::ios_base::badbit);
   openTraceFile();
 }
