@@ -2166,8 +2166,6 @@ void CuptiActivityProfiler::flushTrace(int64_t currentIter) {
     if (libkineto::api().client()) {
       TRACE_ORCA_OVERHEAD(
           "ShutdownLibkinetoClient", libkineto::api().client()->shutdown());
-      libkineto::api().client()->shutdown();
-
       LOG(INFO) << "Reached end of step " << currentIter
                 << ", shut down libkineto client";
     }
