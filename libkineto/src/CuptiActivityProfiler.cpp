@@ -1458,7 +1458,11 @@ const time_point<system_clock> CuptiActivityProfiler::performRunLoopStep(
         // FIXME: Probably want to allow interruption here
         // for quickly handling trace request via synchronous API
         std::lock_guard<std::recursive_mutex> guard(mutex_);
+        auto start_time = libkineto::timeSinceEpoch(system_clock::now());
         processTraceInternal(*logger_);
+        auto end_time = libkineto::timeSinceEpoch(system_clock::now());
+        auto elapse = end_time - start_time;
+        LOG(INFO) << "ProcessTrace elapsed time: " << elapse << " ns";
         UST_LOGGER_MARK_COMPLETED(kPostProcessingStage);
         resetInternal();
         VLOG(0) << "ProcessTrace -> WaitForRequest";
