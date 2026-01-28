@@ -1523,7 +1523,13 @@ void CuptiActivityProfiler::stopTraceOrca() {
   currentRunloopState_ = RunloopState::WaitForRequest;
 
   if (mpiClient_) {
-    TRACE_ORCA_OVERHEAD("MpiClientDestroy", mpiClient_->Destroy());
+    LOG(INFO) << "Destroying MPI client";
+    auto start_time = libkineto::timeSinceEpoch(system_clock::now());
+    mpiClient_->Destroy();
+    auto end_time = libkineto::timeSinceEpoch(system_clock::now());
+    auto elapse = end_time - start_time;
+    LOG(INFO) << "Rank " << rank_ << ": MPI client destroyed in " << elapse
+              << " ns";
     for (auto& tracer : kinetoTracers_) {
       tracer.reset();
     }
