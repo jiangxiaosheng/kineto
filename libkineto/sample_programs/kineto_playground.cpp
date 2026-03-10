@@ -28,9 +28,9 @@ int main() {
   // Kineto config
   libkineto_init(false, true);
 
-  // Kineto sets up a callback to convert gpu timestamp to tsc timestamp during collection
-  // We need to register this converter to get back wall times during post processing
-  // The code is completely stolen from pytorch
+  // Kineto sets up a callback to convert gpu timestamp to tsc timestamp during
+  // collection We need to register this converter to get back wall times during
+  // post processing The code is completely stolen from pytorch
   register_time_converter();
   setOrcaMode(true);
 

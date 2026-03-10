@@ -54,16 +54,16 @@ struct ITraceActivity {
   virtual const std::string getMetadataValue(const std::string& key) const {
     return "";
   }
-  
+
   // The fields are: stream, correlation, mem_bw
   struct PromotedFields {
     int64_t stream = -1;
     int64_t correlation = -1;
     float mem_bw = 0.0f;
   };
-  // Similar to metadataJson, but return a string in the format of "key1=value1,key2=value2,..."
-  // This will be used to populate the misc_args field of the KinetoEvent.
-  // Will exclude the promoted fields.
+  // Similar to metadataJson, but return a string in the format of
+  // "key1=value1,key2=value2,..." This will be used to populate the misc_args
+  // field of the KinetoEvent. Will exclude the promoted fields.
   virtual std::pair<PromotedFields, std::string> getMetadata() const = 0;
 
   static int64_t nsToUs(int64_t ns) {

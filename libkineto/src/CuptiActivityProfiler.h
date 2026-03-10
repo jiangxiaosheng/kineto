@@ -186,10 +186,14 @@ class CuptiActivityProfiler {
   void setLogger(ActivityLogger* logger) {
     logger_ = logger;
     if (auto orcaLogger = dynamic_cast<OrcaTraceLogger*>(logger_)) {
-      auto kinetoTorchOpTracer = std::dynamic_pointer_cast<KinetoTorchOpTracer>(kinetoTracers_[0]);
-      auto kinetoMiscTracer = std::dynamic_pointer_cast<KinetoMiscTracer>(kinetoTracers_[1]);
-      auto kinetoMetadataTracer = std::dynamic_pointer_cast<KinetoMetadataTracer>(kinetoTracers_[2]);
-      orcaLogger->bindTracers(kinetoTorchOpTracer, kinetoMiscTracer, kinetoMetadataTracer);
+      auto kinetoTorchOpTracer =
+          std::dynamic_pointer_cast<KinetoTorchOpTracer>(kinetoTracers_[0]);
+      auto kinetoMiscTracer =
+          std::dynamic_pointer_cast<KinetoMiscTracer>(kinetoTracers_[1]);
+      auto kinetoMetadataTracer =
+          std::dynamic_pointer_cast<KinetoMetadataTracer>(kinetoTracers_[2]);
+      orcaLogger->bindTracers(
+          kinetoTorchOpTracer, kinetoMiscTracer, kinetoMetadataTracer);
     }
   }
 

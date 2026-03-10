@@ -36,7 +36,8 @@ class OrcaTraceLogger : public ActivityLogger {
 
   void handleTraceStart(
       const std::unordered_map<std::string, std::string>& metadata,
-      const std::unordered_map<std::string, std::string>& device_properties) override;
+      const std::unordered_map<std::string, std::string>& device_properties)
+      override;
 
   void finalizeTrace(
       const Config& config,
@@ -54,9 +55,10 @@ class OrcaTraceLogger : public ActivityLogger {
   }
 
   // must be called before use
-  void bindTracers(const KinetoTorchOpTracerRef& kinetoTorchOpTracer,
-                   const KinetoMiscTracerRef& kinetoMiscTracer,
-                   const KinetoMetadataTracerRef& kinetoMetadataTracer) {
+  void bindTracers(
+      const KinetoTorchOpTracerRef& kinetoTorchOpTracer,
+      const KinetoMiscTracerRef& kinetoMiscTracer,
+      const KinetoMetadataTracerRef& kinetoMetadataTracer) {
     kinetoTorchOpTracer_ = kinetoTorchOpTracer;
     kinetoMiscTracer_ = kinetoMiscTracer;
     kinetoMetadataTracer_ = kinetoMetadataTracer;

@@ -577,8 +577,7 @@ void Config::printActivityProfilerConfig(std::ostream& s) const {
       << std::endl;
   }
 
-  s << "  With Orca: " << (withOrca() ? "true" : "false")
-    << std::endl;
+  s << "  With Orca: " << (withOrca() ? "true" : "false") << std::endl;
 
   s << "  Max GPU buffer size: " << activitiesMaxGpuBufferSize() / 1024 / 1024
     << "MB" << std::endl;

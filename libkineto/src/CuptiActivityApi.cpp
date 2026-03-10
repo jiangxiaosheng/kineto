@@ -257,16 +257,17 @@ const std::pair<int, size_t> CuptiActivityApi::processActivities(
 
 const std::pair<int, size_t> CuptiActivityApi::processActivitiesStatic(
     CuptiActivityBufferMap& buffers,
-  const std::function<void(const CUpti_Activity*)>& handler) {
+    const std::function<void(const CUpti_Activity*)>& handler) {
   std::pair<int, size_t> res{0, 0};
 #ifdef HAS_CUPTI
-    for (auto& pair : buffers) {
-      auto& buf = pair.second;
-      res.first += processActivitiesForBufferStatic(buf->data(), buf->size(), handler);
-      res.second += buf->size();
-    }
+  for (auto& pair : buffers) {
+    auto& buf = pair.second;
+    res.first +=
+        processActivitiesForBufferStatic(buf->data(), buf->size(), handler);
+    res.second += buf->size();
+  }
 #endif
-    return res;
+  return res;
 }
 
 void CuptiActivityApi::clearActivities() {

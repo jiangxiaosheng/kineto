@@ -9,8 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 
 #ifdef HAS_CUPTI
 #include <cupti.h>

@@ -565,8 +565,8 @@ void CuptiActivityProfiler::GpuUserEventMap::insertOrExtendEvent(
   }
 }
 
-const CuptiActivityProfiler::CpuGpuSpanPair& CuptiActivityProfiler::
-    defaultTraceSpan() {
+const CuptiActivityProfiler::CpuGpuSpanPair&
+CuptiActivityProfiler::defaultTraceSpan() {
   static TraceSpan span(0, 0, "Unknown", "");
   static CpuGpuSpanPair span_pair(span, span);
   return span_pair;
@@ -1632,8 +1632,10 @@ void CuptiActivityProfiler::TraceSnapshot::processTrace(
   finalizeTrace(logger);
 }
 
-CuptiActivityProfiler::CpuGpuSpanPair& CuptiActivityProfiler::TraceSnapshot::
-    recordTraceSpan(TraceSpan& span, int gpuOpCount) {
+CuptiActivityProfiler::CpuGpuSpanPair&
+CuptiActivityProfiler::TraceSnapshot::recordTraceSpan(
+    TraceSpan& span,
+    int gpuOpCount) {
   TraceSpan gpu_span(gpuOpCount, span.iteration, span.name, "GPU: ");
   auto& iterations = traceSpans[span.name];
   iterations.push_back({span, gpu_span});
@@ -2122,8 +2124,8 @@ void CuptiActivityProfiler::TraceSnapshot::processCpuTrace(
   logger.handleTraceSpan(cpu_span);
 }
 
-std::shared_ptr<CuptiActivityProfiler::TraceSnapshot> CuptiActivityProfiler::
-    makeTraceSnapshot() {
+std::shared_ptr<CuptiActivityProfiler::TraceSnapshot>
+CuptiActivityProfiler::makeTraceSnapshot() {
   auto now = system_clock::now();
   std::shared_ptr<TraceSnapshot> snapshot = std::make_shared<TraceSnapshot>();
 
@@ -2279,8 +2281,8 @@ void CuptiActivityProfiler::finalizeTrace(
       config, std::move(traceBuffers_), captureWindowEndTime_, loggerMD);
 }
 
-std::unordered_map<std::string, std::vector<std::string>> CuptiActivityProfiler::
-    getLoggerMetadata() {
+std::unordered_map<std::string, std::vector<std::string>>
+CuptiActivityProfiler::getLoggerMetadata() {
   std::unordered_map<std::string, std::vector<std::string>> loggerMD;
 
 #if !USE_GOOGLE_LOG

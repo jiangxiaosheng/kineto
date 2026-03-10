@@ -60,8 +60,8 @@ class ActivityLogger {
       const std::string& device_properties) = 0;
 
   // For orca logger we need not to parse the device properties into a string,
-  // while we rather pass it as a map of key-value pairs to write the metadata event.
-  // Only meant to be overridden by OrcaTraceLogger.
+  // while we rather pass it as a map of key-value pairs to write the metadata
+  // event. Only meant to be overridden by OrcaTraceLogger.
   virtual void handleTraceStart(
       const std::unordered_map<std::string, std::string>& metadata,
       const std::unordered_map<std::string, std::string>& device_properties) {}

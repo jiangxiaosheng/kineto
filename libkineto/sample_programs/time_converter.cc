@@ -34,8 +34,8 @@ ApproximateClockToUnixTimeConverter::measurePairs() {
   return out;
 }
 
-std::function<time_t(libkineto::approx_time_t)> ApproximateClockToUnixTimeConverter::
-    makeConverter() {
+std::function<time_t(libkineto::approx_time_t)>
+ApproximateClockToUnixTimeConverter::makeConverter() {
   auto end_times = measurePairs();
 
   // Compute the real time that passes for each tick of the approximate clock.

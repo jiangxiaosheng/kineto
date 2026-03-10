@@ -104,8 +104,8 @@ inline const std::string CudaSyncActivity::metadataJson() const {
   return "";
 }
 
-std::pair<ITraceActivity::PromotedFields, std::string> CudaSyncActivity::
-    getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+CudaSyncActivity::getMetadata() const {
   const CUpti_ActivitySynchronization& sync = raw();
   PromotedFields promoted_fields = {
       .stream = static_cast<int32_t>(sync.streamId),
@@ -166,8 +166,8 @@ inline const std::string GpuActivity<CUpti_ActivityKernel4>::metadataJson()
 }
 
 template <>
-std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
-    CUpti_ActivityKernel4>::getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+GpuActivity<CUpti_ActivityKernel4>::getMetadata() const {
   const CUpti_ActivityKernel4& kernel = raw();
   PromotedFields promoted_fields = {
       .stream = kernel.streamId,
@@ -241,8 +241,8 @@ inline const std::string GpuActivity<CUpti_ActivityMemcpy>::metadataJson()
 }
 
 template <>
-std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
-    CUpti_ActivityMemcpy>::getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+GpuActivity<CUpti_ActivityMemcpy>::getMetadata() const {
   const CUpti_ActivityMemcpy& memcpy = raw();
   PromotedFields promoted_fields = {
       memcpy.streamId,
@@ -284,8 +284,8 @@ inline const std::string GpuActivity<CUpti_ActivityMemcpy2>::metadataJson()
 }
 
 template <>
-std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
-    CUpti_ActivityMemcpy2>::getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+GpuActivity<CUpti_ActivityMemcpy2>::getMetadata() const {
   const CUpti_ActivityMemcpy2& memcpy = raw();
   PromotedFields promoted_fields = {
       memcpy.streamId,
@@ -332,8 +332,8 @@ inline const std::string GpuActivity<CUpti_ActivityMemset>::metadataJson()
 }
 
 template <>
-std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
-    CUpti_ActivityMemset>::getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+GpuActivity<CUpti_ActivityMemset>::getMetadata() const {
   const CUpti_ActivityMemset& memset = raw();
   PromotedFields promoted_fields = {
       .stream = memset.streamId,
@@ -367,8 +367,8 @@ inline const std::string OverheadActivity::metadataJson() const {
   return "";
 }
 
-std::pair<ITraceActivity::PromotedFields, std::string> OverheadActivity::
-    getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+OverheadActivity::getMetadata() const {
   return std::make_pair(ITraceActivity::PromotedFields(), "");
 }
 
@@ -401,8 +401,8 @@ inline const std::string RuntimeActivity::metadataJson() const {
       activity_.correlationId);
 }
 
-std::pair<ITraceActivity::PromotedFields, std::string> RuntimeActivity::
-    getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+RuntimeActivity::getMetadata() const {
   PromotedFields promoted_fields = {
       .stream = -1,
       .correlation = activity_.correlationId,
@@ -432,8 +432,8 @@ inline const std::string DriverActivity::metadataJson() const {
       activity_.correlationId);
 }
 
-std::pair<ITraceActivity::PromotedFields, std::string> DriverActivity::
-    getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+DriverActivity::getMetadata() const {
   PromotedFields promoted_fields = {
       .stream = -1,
       .correlation = activity_.correlationId,
@@ -464,8 +464,8 @@ inline const std::string GpuActivity<T>::metadataJson() const {
 }
 
 template <class T>
-std::pair<ITraceActivity::PromotedFields, std::string> GpuActivity<
-    T>::getMetadata() const {
+std::pair<ITraceActivity::PromotedFields, std::string>
+GpuActivity<T>::getMetadata() const {
   return std::make_pair(ITraceActivity::PromotedFields(), "");
 }
 

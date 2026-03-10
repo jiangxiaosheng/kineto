@@ -269,7 +269,8 @@ struct GpuActivity : public CuptiActivity<T> {
   const T& raw() const {
     return CuptiActivity<T>::raw();
   }
-  std::pair<ITraceActivity::PromotedFields, std::string> getMetadata() const override;
+  std::pair<ITraceActivity::PromotedFields, std::string> getMetadata()
+      const override;
 };
 
 } // namespace KINETO_NAMESPACE
